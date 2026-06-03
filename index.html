@@ -506,6 +506,11 @@ function openProject(id) {
   activeId = id;
   document.getElementById('welcome').style.display='none';
   document.getElementById('tabs-bar').style.display='flex';
+  const p=getActive();
+  // Archivierte LVs öffnen aber mit Hinweis
+  if(p&&p.archived){
+    toast('⚠ Dieses LV ist archiviert – du kannst es bearbeiten oder reaktivieren','warn');
+  }
   updatePills();
   renderSidebar();
   switchTab('lv');
@@ -523,15 +528,26 @@ function archiveProject() {
   const p=getActive(); if(!p) return;
   if(!confirm(`"${p.name}" archivieren?`)) return;
   p.archived=!p.archived;
-  saveDB(); renderSidebar(); updatePills();
-  toast(p.archived?'Archiviert':'Aus Archiv wiederhergestellt', 'warn');
+  saveDB();
+  renderSidebar();
+  updatePills();
+  // Archiv-Tab sofort aktualisieren falls gerade sichtbar
+  if(currentTab==='archiv') { const b=document.getElementById('tab-body'); b.innerHTML=''; renderArchiv(b); }
+  toast(p.archived?'🗄 Archiviert – LV in Archiv-Tab sichtbar':'✅ Aus Archiv wiederhergestellt', 'warn');
 }
 
 function deleteProjectPermanent(id) {
   if(!confirm('LV unwiderruflich löschen?')) return;
   DB.projects=DB.projects.filter(p=>p.id!==id);
-  if(activeId===id){activeId=null;document.getElementById('welcome').style.display='';document.getElementById('tabs-bar').style.display='none';}
-  saveDB(); renderSidebar(); toast('Gelöscht','warn');
+  if(activeId===id){
+    activeId=null;
+    document.getElementById('welcome').style.display='';
+    document.getElementById('tabs-bar').style.display='none';
+  }
+  saveDB();
+  renderSidebar();
+  if(currentTab==='archiv'){const b=document.getElementById('tab-body');b.innerHTML='';renderArchiv(b);}
+  toast('Gelöscht','warn');
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -862,13 +878,15 @@ function renderStamm(container) {
   ];
   let html=`<div class="stamm-grid">${projSelect}`;
   fields.forEach(([field,label,type,ph])=>{
+    if(type==='normen-picker'){
+      html+=buildNormenPicker(p);
+      return;
+    }
     html+=`<div class="sf"><label>${label}</label>`;
     if(type==='gewerk')
       html+=`<select data-sfield="${field}" style="font-size:11px">${GEWERKE.map(g=>`<option${p[field]===g?' selected':''} value="${g}">${g}</option>`).join('')}</select>`;
     else if(type==='vergabeart')
       html+=`<select data-sfield="${field}">${VERGABEARTEN.map(g=>`<option${p[field]===g?' selected':''} value="${g}">${g}</option>`).join('')}</select>`;
-    else if(type==='normen-picker')
-      html+=buildNormenPicker(p);
     else
       html+=`<input value="${esc(p[field]||'')}" placeholder="${ph}" data-sfield="${field}">`;
     html+=`</div>`;
