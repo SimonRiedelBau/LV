@@ -5,6 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LV-Manager v2 | Riedel Bau AG</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="manifest" id="pwa-manifest">
+<meta name="theme-color" content="#1e3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LV-Manager">
+<script>
+// ── PWA: Manifest inline injizieren ──────────────────────────────────────
+const manifest = {
+  name: "LV-Manager | Riedel Bau AG",
+  short_name: "LV-Manager",
+  description: "Leistungsverzeichnisse erstellen, prüfen und exportieren",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#f0f2f5",
+  theme_color: "#1e3a5f",
+  icons: [
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%231e3a5f'/%3E%3Ctext y='72' x='50' text-anchor='middle' font-size='62' font-family='serif'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E",
+      sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+
+// ── Service Worker registrieren ──────────────────────────────────────────
+if('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'lv-manager-v2';
+const ASSETS = [self.location.href];
+self.addEventListener('install', e => e.waitUntil(
+  caches.open(CACHE).then(c => c.addAll(ASSETS)).then(()=>self.skipWaiting())
+));
+self.addEventListener('activate', e => e.waitUntil(
+  caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+    .then(()=>self.clients.claim())
+));
+self.addEventListener('fetch', e => e.respondWith(
+  caches.match(e.request).then(r => r || fetch(e.request).catch(()=>caches.match(e.request)))
+));`;
+  const swBlob = new Blob([swCode], {type:'text/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+}
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -176,6 +217,24 @@ button:active{transform:scale(.98)}
 .proj-count{font-size:9px;color:#9ca3af;margin-left:auto}
 .proj-edit-btn{font-size:10px;background:none;border:none;color:#9ca3af;cursor:pointer;padding:0 2px;opacity:0;transition:opacity .1s}
 .proj-item:hover .proj-edit-btn{opacity:1}
+/* ── NORMEN PICKER ── */
+.normen-picker{border:1.5px solid var(--border);border-radius:6px;background:#fff;overflow:hidden}
+.normen-search{width:100%;padding:7px 10px;border:none;border-bottom:1px solid var(--border);font-size:12px;font-family:inherit;outline:none}
+.normen-search:focus{border-color:var(--mid);background:#eff6ff}
+.normen-scroll{max-height:220px;overflow-y:auto}
+.normen-group{border-bottom:1px solid #f3f4f6}
+.normen-group-hdr{padding:5px 10px;font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.8px;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none;position:sticky;top:0;z-index:1}
+.normen-group-hdr:hover{filter:brightness(1.1)}
+.normen-item{display:flex;align-items:flex-start;gap:8px;padding:5px 10px 5px 16px;font-size:11px;cursor:pointer;transition:background .1s;line-height:1.4}
+.normen-item:hover{background:#f9fafb}
+.normen-item.selected{background:#eff6ff}
+.normen-item input[type=checkbox]{margin-top:2px;flex-shrink:0;accent-color:var(--mid)}
+.normen-item .din{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--mid);white-space:nowrap;min-width:90px;font-size:10px}
+.normen-item .txt{color:#374151}
+.normen-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;min-height:24px}
+.normen-tag{display:inline-flex;align-items:center;gap:4px;background:var(--light);color:var(--dark);border-radius:4px;padding:2px 8px;font-size:10px;font-weight:600}
+.normen-tag button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0;line-height:1}
+.normen-tag button:hover{color:#dc2626}
 /* ── ARCHIVE BADGE ── */
 .arch-ribbon{display:inline-block;background:#9ca3af;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px}
 </style>
@@ -193,6 +252,10 @@ button:active{transform:scale(.98)}
     <button class="tb-btn ghost" onclick="exportAllJSON()">⬇ Backup</button>
     <div class="tb-spacer"></div>
     <span class="tb-status" id="tb-status"></span>
+    <button id="pwa-install-btn" class="tb-btn" onclick="installPWA()"
+      style="background:#7c3aed;color:#fff;display:none;font-size:11px;padding:5px 12px">
+      📲 Als App installieren
+    </button>
   </div>
 </div>
 
@@ -324,7 +387,83 @@ const STATUS_CFG = {
   star: {icon:'⭐',label:'Besondere Leistung',bg:'#fef0d5',col:'#92400e'},
 };
 const UNITS=['m','m²','m³','Stk','psch','Std','Wo','kg','t','psch/Mo'];
-const GEWERKE=['Grundleitungsarbeiten','Rohbau','Erdarbeiten','Betonarbeiten','Zimmerer','Dachdecker','Klempner','Putz','Trockenbau','Estrich','Fliesen','Maler','Schlosser','Metallbau','Fenster & Türen','Elektro','Heizung','Lüftung','Sanitär','Sonstiges'];
+const GEWERKE=[
+  // VOB/C Abschnitt A – Allgemeine Technische Vertragsbedingungen
+  'DIN 18299 – Allgemeine Regelungen',
+  // Erd- und Tiefbau
+  'DIN 18300 – Erdarbeiten',
+  'DIN 18301 – Bohrarbeiten',
+  'DIN 18302 – Brunnenbauarbeiten',
+  'DIN 18303 – Verbauarbeiten',
+  'DIN 18304 – Ramm-, Rüttel-, Pressarbeiten',
+  'DIN 18305 – Wasserhaltungsarbeiten',
+  'DIN 18306 – Entwässerungskanalarbeiten',
+  'DIN 18307 – Druckrohrleitungen Erdbereich',
+  'DIN 18308 – Drän- und Versickerarbeiten',
+  'DIN 18309 – Einpressarbeiten',
+  'DIN 18310 – Sicherungsarbeiten',
+  'DIN 18311 – Nassbaggerarbeiten',
+  'DIN 18312 – Untertagebauarbeiten',
+  'DIN 18313 – Schlitzwandarbeiten',
+  'DIN 18314 – Spritzbetonarbeiten',
+  'DIN 18315 – Verkehrswegebauarbeiten – Oberbau',
+  'DIN 18316 – Pflasterdecken und Plattenbeläge',
+  'DIN 18317 – Verkehrswegebauarbeiten – Markierungen',
+  'DIN 18318 – Pflasterdecken Naturstein',
+  'DIN 18319 – Rohrvorpress- und Rohrvortriebsarbeiten',
+  'DIN 18320 – Landschaftsbauarbeiten',
+  'DIN 18321 – Düsenstrahlarbeiten',
+  'DIN 18322 – Kabelleitungstiefbauarbeiten',
+  'DIN 18325 – Gleisbauarbeiten',
+  // Rohbau
+  'DIN 18330 – Mauerarbeiten',
+  'DIN 18331 – Beton- und Stahlbetonarbeiten',
+  'DIN 18332 – Naturwerksteinarbeiten',
+  'DIN 18333 – Betonwerksteinarbeiten',
+  'DIN 18334 – Zimmer- und Holzbauarbeiten',
+  'DIN 18335 – Stahlbauarbeiten',
+  'DIN 18336 – Abdichtungsarbeiten',
+  'DIN 18337 – Abbruch- und Rückbauarbeiten',
+  'DIN 18338 – Dachdeckungs- und Dachabdichtungsarbeiten',
+  'DIN 18339 – Klempnerarbeiten',
+  'DIN 18340 – Trockenbauarbeiten',
+  'DIN 18345 – Wärmedämm-Verbundsysteme',
+  'DIN 18349 – Betonerhaltungsarbeiten',
+  // Ausbau
+  'DIN 18350 – Putz- und Stuckarbeiten',
+  'DIN 18351 – Vorgehängte hinterlüftete Fassaden',
+  'DIN 18352 – Fliesen- und Plattenarbeiten',
+  'DIN 18353 – Estricharbeiten',
+  'DIN 18354 – Gussasphaltarbeiten',
+  'DIN 18355 – Tischlerarbeiten',
+  'DIN 18356 – Parkett- und Holzpflasterarbeiten',
+  'DIN 18357 – Beschlagarbeiten',
+  'DIN 18358 – Rollladen- und Sonnenschutzarbeiten',
+  'DIN 18360 – Metallbauarbeiten',
+  'DIN 18361 – Verglasungsarbeiten',
+  'DIN 18362 – Malerarbeiten – Beschichtungen',
+  'DIN 18363 – Malerarbeiten – Tapezierarbeiten',
+  'DIN 18364 – Korrosionsschutzarbeiten',
+  'DIN 18365 – Bodenbelagarbeiten',
+  'DIN 18366 – Tapezierarbeiten',
+  'DIN 18367 – Holzpflasterarbeiten',
+  'DIN 18368 – Gasleitungsarbeiten',
+  'DIN 18369 – Dämmarbeiten an technischen Anlagen',
+  'DIN 18379 – Raumlufttechnische Anlagen',
+  'DIN 18380 – Heizanlagen und Brauchwassererwärmungsanlagen',
+  'DIN 18381 – Gas-, Wasser- und Entwässerungsanlagen',
+  'DIN 18382 – Nieder- und Mittelspannungsanlagen',
+  'DIN 18383 – Blitzschutzanlagen',
+  'DIN 18384 – Fernmeldeanlagen',
+  'DIN 18385 – Förderanlagen, Aufzugsanlagen',
+  'DIN 18386 – Gebäudeautomation',
+  'DIN 18421 – Dämm- und Brandschutzarbeiten',
+  'DIN 18451 – Gerüstarbeiten',
+  'DIN 18459 – Abbruch- und Rückbauarbeiten (TGA)',
+  // Sonstiges
+  'Sonstiges / Gewerk nicht aufgeführt',
+];
+const VERGABEARTEN=['Öffentliche Ausschreibung (VOB/A § 3)','Beschränkte Ausschreibung (VOB/A § 3)','Freihändige Vergabe (VOB/A § 3)','Verhandlungsvergabe','Direktvergabe NU','EU-weite Ausschreibung (VgV)'];
 
 function mkPos(oz='',desc='',unit='m',menge='',ep='',status='ok',vob='',note='',added=false) {
   return {id:uid(),oz,desc,unit,menge,ep,status,vob,note,added};
@@ -350,11 +489,12 @@ function getProject(id) { return DB.projects.find(p=>p.id===id)||null; }
 
 function newProject() {
   const p = {
-    id:uid(), name:'Neues LV', gewerk:'Grundleitungsarbeiten', ort:'', ag:'Riedel Bau AG',
-    bl:'', lvnr:'', datum:new Date().toLocaleDateString('de-DE'), grenze:'',
-    system:'Trennsystem', material:'KG-PVC SN8 nach DIN EN 1401', notes:'',
+    id:uid(), name:'Neues LV', gewerk:'DIN 18299 – Allgemeine Regelungen', ort:'',
+    ag:'Riedel Bau AG', an:'', bl:'', lvnr:'',
+    datum:new Date().toLocaleDateString('de-DE'), ausfzeit:'', leistgrenze:'', norm:'',
+    vergabeart:'Freihändige Vergabe (VOB/A § 3)', notes:'',
     sections:defaultSections(), archived:false,
-    createdAt:Date.now(), updatedAt:Date.now(), chat:[]
+    createdAt:Date.now(), updatedAt:Date.now(), chat:[], projektId:null
   };
   DB.projects.unshift(p);
   saveDB();
@@ -623,6 +763,74 @@ function deletePos(pid){
 // ════════════════════════════════════════════════════════════════════════
 // STAMM TAB
 // ════════════════════════════════════════════════════════════════════════
+function buildNormenPicker(p) {
+  const selected = getNormenArray(p);
+  const tags = selected.map(din=>`<span class="normen-tag">${din}
+    <button type="button" data-removenorm="${din}" title="Entfernen">×</button>
+  </span>`).join('');
+
+  let groups='';
+  NORMEN_GRUPPEN.forEach((g,gi)=>{
+    const items=g.normen.map((n,ni)=>{
+      const isSel=selected.includes(n.din);
+      return `<label class="normen-item${isSel?' selected':''}" data-gi="${gi}" data-ni="${ni}">
+        <input type="checkbox" data-normen-check="${n.din}"${isSel?' checked':''}>
+        <span class="din">${n.din}</span>
+        <span class="txt">${n.txt}</span>
+      </label>`;
+    }).join('');
+    groups+=`<div class="normen-group" data-group="${gi}">
+      <div class="normen-group-hdr" style="background:${g.color}" onclick="toggleNormenGroup(${gi})">
+        <span id="ng-arrow-${gi}">▶</span> ${g.name}
+        <span style="margin-left:auto;font-size:9px;opacity:.8">${g.normen.filter(n=>selected.includes(n.din)).length} ausgewählt</span>
+      </div>
+      <div id="ng-body-${gi}" style="display:none">${items}</div>
+    </div>`;
+  });
+
+  return `<div class="sf full" style="grid-column:1/-1">
+    <label>Anzuwendende Normen / ATV</label>
+    <div class="normen-tags" id="normen-tags">${tags}</div>
+    <div class="normen-picker">
+      <input class="normen-search" id="normen-search" placeholder="🔍 Norm suchen… z.B. DIN 18306 oder Entwässerung"
+        oninput="filterNormen(this.value)">
+      <div class="normen-scroll" id="normen-scroll">${groups}</div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      ${selected.length} Norm${selected.length!==1?'en':''} ausgewählt – Gruppe anklicken zum Aufklappen
+    </div>
+  </div>`;
+}
+
+function toggleNormenGroup(gi) {
+  const body=document.getElementById('ng-body-'+gi);
+  const arrow=document.getElementById('ng-arrow-'+gi);
+  if(!body) return;
+  const isOpen=body.style.display!=='none';
+  body.style.display=isOpen?'none':'';
+  if(arrow) arrow.textContent=isOpen?'▶':'▼';
+}
+
+function filterNormen(q) {
+  const lq=q.toLowerCase();
+  NORMEN_GRUPPEN.forEach((g,gi)=>{
+    const body=document.getElementById('ng-body-'+gi);
+    const hdr=document.querySelector(`[data-group="${gi}"] .normen-group-hdr`);
+    if(!body) return;
+    let anyVisible=false;
+    body.querySelectorAll('.normen-item').forEach(item=>{
+      const din=item.querySelector('.din')?.textContent||'';
+      const txt=item.querySelector('.txt')?.textContent||'';
+      const vis=!lq||din.toLowerCase().includes(lq)||txt.toLowerCase().includes(lq);
+      item.style.display=vis?'':'none';
+      if(vis) anyVisible=true;
+    });
+    // Auto-expand group if search matches
+    if(lq && anyVisible) { body.style.display=''; const a=document.getElementById('ng-arrow-'+gi); if(a)a.textContent='▼'; }
+    if(hdr) hdr.style.display=(!lq||anyVisible)?'':'none';
+  });
+}
+
 function renderStamm(container) {
   const p=getActive(); if(!p) return;
   // Projekt-Zuordnung oben
@@ -639,22 +847,28 @@ function renderStamm(container) {
   </div>`:'<div class="sf full" style="margin-bottom:4px"><label>📁 Projekt-Zuordnung</label><div style="display:flex;gap:8px"><span style="font-size:12px;color:var(--muted);padding:7px 0">Noch keine Projekte –</span><button onclick="newProjekt()" style="background:var(--dark);color:#fff;padding:6px 12px;font-size:11px;border-radius:5px;border:none;cursor:pointer">+ Erstes Projekt erstellen</button></div></div>';
 
   const fields=[
-    ['name','Projektname','text','Neues Projekt'],
-    ['gewerk','Gewerk','gewerk',''],
-    ['ort','Ort / Adresse','text','München'],
-    ['ag','Auftraggeber','text','ADIMO GmbH'],
-    ['bl','Bauleiter','text','Simon Berger'],
-    ['lvnr','LV-Nummer','text','25-0210'],
-    ['datum','Datum','text',''],
-    ['system','Entwässerungssystem','text','Trennsystem'],
-    ['material','Material','text','KG-PVC SN8'],
-    ['grenze','Leistungsgrenze','text','OK Bodenplatte bis ÜS'],
+    ['name','LV-Bezeichnung','text','z.B. Rohbauarbeiten EG'],
+    ['gewerk','Gewerk / Leistungsbereich','gewerk',''],
+    ['ort','Bauvorhaben / Adresse','text','z.B. Musterstraße 1, 80809 München'],
+    ['ag','Auftraggeber (AG)','text','z.B. Riedel Bau AG'],
+    ['an','Auftragnehmer (AN)','text','z.B. Musterfirma GmbH'],
+    ['bl','Bauleiter','text',''],
+    ['lvnr','LV-Nummer / VE','text','z.B. 25-0210'],
+    ['datum','Ausschreibungsdatum','text',''],
+    ['ausfzeit','Ausführungszeitraum','text','z.B. 01.03.2026 – 30.09.2026'],
+    ['leistgrenze','Leistungsgrenze / Schnittstellen','text','z.B. OK Bodenplatte bis ÜS / Übergabe an TGA'],
+    ['norm','Anzuwendende Normen / ATV','normen-picker',''],
+    ['vergabeart','Vergabeart','vergabeart',''],
   ];
   let html=`<div class="stamm-grid">${projSelect}`;
   fields.forEach(([field,label,type,ph])=>{
     html+=`<div class="sf"><label>${label}</label>`;
     if(type==='gewerk')
-      html+=`<select data-sfield="${field}">${GEWERKE.map(g=>`<option${p[field]===g?' selected':''} value="${g}">${g}</option>`).join('')}</select>`;
+      html+=`<select data-sfield="${field}" style="font-size:11px">${GEWERKE.map(g=>`<option${p[field]===g?' selected':''} value="${g}">${g}</option>`).join('')}</select>`;
+    else if(type==='vergabeart')
+      html+=`<select data-sfield="${field}">${VERGABEARTEN.map(g=>`<option${p[field]===g?' selected':''} value="${g}">${g}</option>`).join('')}</select>`;
+    else if(type==='normen-picker')
+      html+=buildNormenPicker(p);
     else
       html+=`<input value="${esc(p[field]||'')}" placeholder="${ph}" data-sfield="${field}">`;
     html+=`</div>`;
@@ -663,10 +877,7 @@ function renderStamm(container) {
     <textarea rows="4" data-sfield="notes" placeholder="Besonderheiten, Risiken…">${esc(p.notes||'')}</textarea>
   </div></div>
   <div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:7px;font-size:11px;color:var(--muted)">
-    Erstellt: ${new Date(p.createdAt).toLocaleString('de-DE')} &nbsp;|&nbsp;
-    Zuletzt geändert: ${new Date(p.updatedAt).toLocaleString('de-DE')} &nbsp;|&nbsp;
-    Positionen: ${posCount(p)} &nbsp;|&nbsp;
-    Status: ${p.archived?'🗄 Archiviert':'✅ Aktiv'}
+    Erstellt: ${new Date(p.createdAt).toLocaleString('de-DE')} &nbsp;|&nbsp; Geändert: ${new Date(p.updatedAt).toLocaleString('de-DE')} &nbsp;|&nbsp; Positionen: ${posCount(p)} &nbsp;|&nbsp; Status: ${p.archived?'🗄 Archiviert':'✅ Aktiv'} &nbsp;|&nbsp; Netto: ${fmtEuro(totalNetto(p))}
   </div>`;
   const el=document.createElement('div');
   el.innerHTML=html;
@@ -675,7 +886,48 @@ function renderStamm(container) {
   // Event delegation for stamm
   el.addEventListener('change',e=>{
     const f=e.target.dataset.sfield;
-    if(f) updateProject(p=>p[f]=e.target.value);
+    if(f) updateProject(p=>{ p[f]=e.target.value; });
+    // Normen checkbox
+    const din=e.target.dataset.normenCheck;
+    if(din) {
+      updateProject(p=>{
+        const arr=getNormenArray(p);
+        if(e.target.checked){ if(!arr.includes(din)) arr.push(din); }
+        else { const i=arr.indexOf(din); if(i>=0) arr.splice(i,1); }
+        p.normArr=arr; p.norm=normenToString(arr);
+      });
+      // Update tags display
+      const pp=getActive();
+      const tagsEl=el.querySelector('#normen-tags');
+      if(tagsEl&&pp) tagsEl.innerHTML=getNormenArray(pp).map(d=>`<span class="normen-tag">${d}
+        <button type="button" data-removenorm="${d}" title="Entfernen">×</button>
+      </span>`).join('');
+      // Update selected class
+      const lbl=e.target.closest('.normen-item');
+      if(lbl) lbl.classList.toggle('selected', e.target.checked);
+      // Update group counter
+      const gi=lbl?.dataset.gi;
+      if(gi!==undefined){
+        const pp2=getActive();
+        const arr2=getNormenArray(pp2);
+        const g=NORMEN_GRUPPEN[gi];
+        const cnt=g?g.normen.filter(n=>arr2.includes(n.din)).length:0;
+        const hdr=document.querySelector(`[data-group="${gi}"] .normen-group-hdr span:last-child`);
+        if(hdr) hdr.textContent=cnt+' ausgewählt';
+      }
+    }
+  });
+  // Remove tag via click
+  el.addEventListener('click',e=>{
+    const din=e.target.dataset.removenorm;
+    if(din){
+      updateProject(p=>{
+        const arr=getNormenArray(p);
+        const i=arr.indexOf(din); if(i>=0) arr.splice(i,1);
+        p.normArr=arr; p.norm=normenToString(arr);
+      });
+      switchTab('stamm');
+    }
   });
 }
 
@@ -933,9 +1185,11 @@ function renderChatMessages(){}
 async function sendChat(){}
 
 function buildLVContext(p){
-  let ctx=`Projekt: ${p.name} | Gewerk: ${p.gewerk} | Ort: ${p.ort}\n`;
-  ctx+=`AG: ${p.ag} | BL: ${p.bl} | LV-Nr: ${p.lvnr}\n`;
-  ctx+=`Material: ${p.material} | System: ${p.system}\n\n`;
+  let ctx=`LV: ${p.name} | Gewerk: ${p.gewerk}\n`;
+  ctx+=`Bauvorhaben: ${p.ort}\n`;
+  ctx+=`AG: ${p.ag} | AN: ${p.an||'—'} | BL: ${p.bl} | LV-Nr: ${p.lvnr}\n`;
+  ctx+=`Ausführung: ${p.ausfzeit||'—'} | Vergabeart: ${p.vergabeart||'—'}\n`;
+  ctx+=`Leistungsgrenze: ${p.leistgrenze||'—'} | Normen: ${p.norm||'—'}\n\n`;
   p.sections.forEach((sec,si)=>{
     ctx+=`--- Abschnitt ${si+1}: ${sec.title} ---\n`;
     sec.positions.forEach(pos=>{
@@ -1033,7 +1287,7 @@ function exportExcel(){
   ws2['!cols']=[{wch:6},{wch:12},{wch:28},{wch:45},{wch:28},{wch:35},{wch:40}];
   XLSX.utils.book_append_sheet(wb,ws2,'VOB-Analyse');
   // Sheet 3: Stamm
-  const sr=[['Feld','Wert'],...Object.entries({Name:p.name,Gewerk:p.gewerk,Ort:p.ort,AG:p.ag,BL:p.bl,'LV-Nr':p.lvnr,Datum:p.datum,System:p.system,Material:p.material,Leistungsgrenze:p.grenze,Notizen:p.notes}).map(([k,v])=>[k,v||''])];
+  const sr=[['Feld','Wert'],...Object.entries({'LV-Bezeichnung':p.name,'Gewerk':p.gewerk,'Bauvorhaben':p.ort,'AG':p.ag,'AN':p.an||'','BL':p.bl,'LV-Nr':p.lvnr,'Datum':p.datum,'Ausführungszeitraum':p.ausfzeit||'','Leistungsgrenze':p.leistgrenze||'','Normen':p.norm||'','Vergabeart':p.vergabeart||'','Notizen':p.notes||''}).map(([k,v])=>[k,v||''])];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sr),'Stammdaten');
   const fname=(p.name||'LV').replace(/[^\w\-äöüÄÖÜß ]/g,'').trim();
   XLSX.writeFile(wb,fname+'.xlsx');
@@ -1058,8 +1312,10 @@ function exportGAEB(){
   lines.push('  <Award>');
   lines.push(`    <DP>11</DP>`);
   lines.push(`    <PrjInfo>`);
-  lines.push(`      <LblPrj>${xmlEsc(p.name)}</LblPrj>`);
-  lines.push(`      <NamePrj>${xmlEsc(p.ort)}</NamePrj>`);
+  lines.push(`      <LblPrj>${xmlEsc(p.lvnr||p.name)}</LblPrj>`);
+  lines.push(`      <NamePrj>${xmlEsc(p.name)}</NamePrj>`);
+  lines.push(`      <OrtPrj>${xmlEsc(p.ort)}</OrtPrj>`);
+  lines.push(`      <AG>${xmlEsc(p.ag)}</AG>`);
   lines.push(`    </PrjInfo>`);
   lines.push('    <BO>');
   // Sections → LV Items
@@ -1190,6 +1446,173 @@ function moveLVtoProjekt(lvId, projektId) {
   saveDB(); renderSidebar();
   const proj = projektId ? DB.projekte.find(p=>p.id===projektId) : null;
   toast('LV verschoben'+(proj?' → '+proj.name:'→ Kein Projekt'));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// NORMEN-DATENBANK (nach Gewerken sortiert)
+// ════════════════════════════════════════════════════════════════════════
+const NORMEN_GRUPPEN = [
+  { name:'Allgemein', color:'#4b5563', normen:[
+    {din:'DIN 18299',    txt:'Allgemeine Regelungen für Bauarbeiten jeder Art'},
+    {din:'VOB/B',        txt:'Allgemeine Vertragsbedingungen für die Ausführung von Bauleistungen'},
+    {din:'VOB/C',        txt:'Allgemeine Technische Vertragsbedingungen'},
+    {din:'HOAI',         txt:'Honorarordnung für Architekten und Ingenieure'},
+    {din:'BGB § 631ff',  txt:'Werkvertragsrecht'},
+  ]},
+  { name:'Erd- & Tiefbau', color:'#92400e', normen:[
+    {din:'DIN 18300',  txt:'Erdarbeiten'},
+    {din:'DIN 18301',  txt:'Bohrarbeiten'},
+    {din:'DIN 18302',  txt:'Brunnenbauarbeiten'},
+    {din:'DIN 18303',  txt:'Verbauarbeiten'},
+    {din:'DIN 18304',  txt:'Ramm-, Rüttel- und Pressarbeiten'},
+    {din:'DIN 18305',  txt:'Wasserhaltungsarbeiten'},
+    {din:'DIN 18306',  txt:'Entwässerungskanalarbeiten'},
+    {din:'DIN 18307',  txt:'Druckrohrleitungsarbeiten im Erdbereich'},
+    {din:'DIN 18308',  txt:'Drän- und Versickerarbeiten'},
+    {din:'DIN 18309',  txt:'Einpressarbeiten'},
+    {din:'DIN 18310',  txt:'Sicherungsarbeiten an Gewässern'},
+    {din:'DIN 18311',  txt:'Nassbaggerarbeiten'},
+    {din:'DIN 18312',  txt:'Untertagebauarbeiten'},
+    {din:'DIN 18313',  txt:'Schlitzwandarbeiten'},
+    {din:'DIN 18314',  txt:'Spritzbetonarbeiten'},
+    {din:'DIN 18319',  txt:'Rohrvorpress- und Rohrvortriebsarbeiten'},
+    {din:'DIN 18320',  txt:'Landschaftsbauarbeiten'},
+    {din:'DIN 18321',  txt:'Düsenstrahlarbeiten'},
+    {din:'DIN 18322',  txt:'Kabelleitungstiefbauarbeiten'},
+    {din:'DIN 18325',  txt:'Gleisbauarbeiten'},
+    {din:'DIN EN 1610',txt:'Verlegung und Prüfung von Abwasserleitungen'},
+    {din:'DIN EN 1401',txt:'Rohrsysteme aus PVC-U für Abwasserleitungen'},
+    {din:'DIN EN 752', txt:'Entwässerungssysteme außerhalb von Gebäuden'},
+    {din:'DIN 4124',   txt:'Baugruben und Gräben – Böschungen, Verbau'},
+    {din:'ZTV A-StB',  txt:'Zusätzliche Technische Vertragsbedingungen Aufgrabungen'},
+    {din:'DIN EN 13508',txt:'Untersuchung und Beurteilung von Entwässerungssystemen'},
+    {din:'BBodSchV',   txt:'Bundes-Bodenschutz- und Altlastenverordnung'},
+    {din:'DepV',       txt:'Deponieverordnung'},
+  ]},
+  { name:'Verkehrswegebau', color:'#1d4ed8', normen:[
+    {din:'DIN 18315',  txt:'Verkehrswegebauarbeiten – Oberbauschichten ohne Bindemittel'},
+    {din:'DIN 18316',  txt:'Pflasterdecken und Plattenbeläge aus Pflastersteinen'},
+    {din:'DIN 18317',  txt:'Verkehrswegebauarbeiten – Markierungsarbeiten'},
+    {din:'DIN 18318',  txt:'Pflasterdecken und Plattenbeläge aus Naturstein'},
+    {din:'ZTV Asphalt-StB',txt:'Zusätzliche Technische Vertragsbedingungen Asphalt'},
+    {din:'ZTV BEA-StB',txt:'Besondere Entwässerungsanlagen Straßenbau'},
+    {din:'RStO',       txt:'Richtlinien für die Standardisierung des Oberbaus'},
+  ]},
+  { name:'Rohbau / Beton', color:'#374151', normen:[
+    {din:'DIN 18330',  txt:'Mauerarbeiten'},
+    {din:'DIN 18331',  txt:'Beton- und Stahlbetonarbeiten'},
+    {din:'DIN 18332',  txt:'Naturwerksteinarbeiten'},
+    {din:'DIN 18333',  txt:'Betonwerksteinarbeiten'},
+    {din:'DIN 18334',  txt:'Zimmer- und Holzbauarbeiten'},
+    {din:'DIN 18335',  txt:'Stahlbauarbeiten'},
+    {din:'DIN 18336',  txt:'Abdichtungsarbeiten'},
+    {din:'DIN 18337',  txt:'Abbruch- und Rückbauarbeiten'},
+    {din:'DIN 18349',  txt:'Betonerhaltungsarbeiten'},
+    {din:'DIN EN 206', txt:'Beton – Festlegung, Eigenschaften, Herstellung'},
+    {din:'DIN 1045',   txt:'Tragwerke aus Beton – Bemessung und Konstruktion'},
+    {din:'DIN 4102',   txt:'Brandverhalten von Baustoffen und Bauteilen'},
+    {din:'DIN 18800',  txt:'Stahlbauten – Bemessung und Konstruktion'},
+    {din:'EC 2',       txt:'Eurocode 2 – Bemessung von Stahlbetontragwerken'},
+    {din:'EC 3',       txt:'Eurocode 3 – Bemessung von Stahlbauten'},
+  ]},
+  { name:'Dach & Fassade', color:'#0f766e', normen:[
+    {din:'DIN 18338',  txt:'Dachdeckungs- und Dachabdichtungsarbeiten'},
+    {din:'DIN 18339',  txt:'Klempnerarbeiten'},
+    {din:'DIN 18345',  txt:'Wärmedämm-Verbundsysteme (WDVS)'},
+    {din:'DIN 18351',  txt:'Vorgehängte hinterlüftete Fassaden'},
+    {din:'DIN 68121',  txt:'Holzprofile für Fenster und Außentüren'},
+    {din:'DIN EN 14351',txt:'Fenster und Außentüren – Leistungseigenschaften'},
+    {din:'EnEV / GEG', txt:'Gebäudeenergiegesetz'},
+    {din:'DIN 4108',   txt:'Wärmeschutz und Energie-Einsparung in Gebäuden'},
+  ]},
+  { name:'Innenausbau', color:'#7c3aed', normen:[
+    {din:'DIN 18340',  txt:'Trockenbauarbeiten'},
+    {din:'DIN 18350',  txt:'Putz- und Stuckarbeiten'},
+    {din:'DIN 18352',  txt:'Fliesen- und Plattenarbeiten'},
+    {din:'DIN 18353',  txt:'Estricharbeiten'},
+    {din:'DIN 18354',  txt:'Gussasphaltarbeiten'},
+    {din:'DIN 18355',  txt:'Tischlerarbeiten'},
+    {din:'DIN 18356',  txt:'Parkett- und Holzpflasterarbeiten'},
+    {din:'DIN 18357',  txt:'Beschlagarbeiten'},
+    {din:'DIN 18358',  txt:'Rollladen- und Sonnenschutzarbeiten'},
+    {din:'DIN 18360',  txt:'Metallbauarbeiten'},
+    {din:'DIN 18361',  txt:'Verglasungsarbeiten'},
+    {din:'DIN 18362',  txt:'Malerarbeiten – Beschichtungen innen/außen'},
+    {din:'DIN 18363',  txt:'Malerarbeiten – Tapezierarbeiten'},
+    {din:'DIN 18364',  txt:'Korrosionsschutzarbeiten an Stahl'},
+    {din:'DIN 18365',  txt:'Bodenbelagarbeiten'},
+    {din:'DIN 18421',  txt:'Dämm- und Brandschutzarbeiten an technischen Anlagen'},
+    {din:'DIN 18451',  txt:'Gerüstarbeiten'},
+    {din:'DIN 4109',   txt:'Schallschutz im Hochbau'},
+    {din:'DIN 18032',  txt:'Sporthallen – Bau und Ausstattung'},
+  ]},
+  { name:'Technische Gebäudeausrüstung (TGA)', color:'#0369a1', normen:[
+    {din:'DIN 18368',  txt:'Gasleitungsarbeiten'},
+    {din:'DIN 18369',  txt:'Dämmarbeiten an technischen Anlagen'},
+    {din:'DIN 18379',  txt:'Raumlufttechnische Anlagen'},
+    {din:'DIN 18380',  txt:'Heizanlagen und Brauchwassererwärmungsanlagen'},
+    {din:'DIN 18381',  txt:'Gas-, Wasser- und Entwässerungsanlagen in Gebäuden'},
+    {din:'DIN 18382',  txt:'Nieder- und Mittelspannungsanlagen'},
+    {din:'DIN 18383',  txt:'Blitzschutzanlagen'},
+    {din:'DIN 18384',  txt:'Fernmeldeanlagen'},
+    {din:'DIN 18385',  txt:'Förderanlagen, Aufzugsanlagen'},
+    {din:'DIN 18386',  txt:'Gebäudeautomation'},
+    {din:'DIN 18459',  txt:'Abbruch- und Rückbauarbeiten TGA'},
+    {din:'VDI 2050',   txt:'Anforderungen an Technikzentralen'},
+    {din:'VDI 3805',   txt:'Produktdatenaustausch in der TGA'},
+    {din:'TRGI',       txt:'Technische Regeln für Gasinstallationen'},
+    {din:'TRWI',       txt:'Technische Regeln für Trinkwasser-Installationen'},
+    {din:'DIN EN 12831',txt:'Heizungsanlagen in Gebäuden – Norm-Heizlast'},
+    {din:'DIN VDE 0100',txt:'Errichten von Niederspannungsanlagen'},
+  ]},
+  { name:'Prüfung & Abnahme', color:'#15803d', normen:[
+    {din:'DIN EN 1610', txt:'Prüfung von Abwasserleitungen und -kanälen'},
+    {din:'DIN EN 13508',txt:'Zustandserfassung von Entwässerungssystemen'},
+    {din:'DIN 4102-2',  txt:'Brandverhalten – Brandwiderstandsklassen'},
+    {din:'DIN 1164',    txt:'Zement – Zusammensetzung und Güteüberwachung'},
+    {din:'ZTV-Ing',     txt:'Zusätzliche Technische Vertragsbedingungen Ingenieurbau'},
+    {din:'DIN 18202',   txt:'Toleranzen im Hochbau – Bauwerke'},
+    {din:'DIN 18195',   txt:'Bauwerksabdichtungen'},
+    {din:'DIN 18533',   txt:'Abdichtung erdberührender Bauteile'},
+    {din:'DIN ISO 9001',txt:'Qualitätsmanagementsysteme'},
+  ]},
+];
+
+// Normen-State: Array von DIN-Strings
+function getNormenArray(p) {
+  if(!p.normArr) {
+    // Migration: alten norm-String in Array umwandeln
+    p.normArr = p.norm ? p.norm.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  }
+  return p.normArr;
+}
+function normenToString(arr) { return arr.join(', '); }
+
+// ════════════════════════════════════════════════════════════════════════
+// PWA INSTALL
+// ════════════════════════════════════════════════════════════════════════
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if(btn) btn.style.display = '';
+});
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('pwa-install-btn');
+  if(btn) btn.style.display = 'none';
+  toast('App erfolgreich installiert! ✓');
+});
+function installPWA() {
+  if(!deferredInstallPrompt) {
+    toast('Installation: Klicke in der Browser-Adressleiste auf das ⊕ Symbol rechts', 'warn');
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(r => {
+    if(r.outcome === 'accepted') toast('App wird installiert…');
+    deferredInstallPrompt = null;
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════
