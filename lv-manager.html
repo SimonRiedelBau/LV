@@ -1167,22 +1167,9 @@ ${ctx}`
   el.style.cssText='display:flex;flex-direction:column;gap:16px;max-width:860px';
 
   // Info Banner
-  let html=`<div style="background:#e8f4fd;border:1.5px solid #2980b9;border-radius:8px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
-    <span style="font-size:22px">🤖</span>
-    <div>
-      <strong style="color:#1e3a5f;font-size:13px">Claude-Analyse – kostenlos über claude.ai</strong><br>
-      <span style="font-size:11px;color:#1a5f8a;line-height:1.6">
-        Wähle einen Analyse-Typ → der Prompt wird mit deinem LV in die <strong>Zwischenablage</strong> kopiert →
-        öffne <a href="https://claude.ai" target="_blank" style="color:#1e3a5f;font-weight:700">claude.ai</a>
-        → einfügen → fertig. Kein API-Key, keine Kosten.
-      </span>
-    </div>
-  </div>`;
-
-  // Analyse-Karten
   // Vorentwurf-Karte zuerst, groß und prominent
   const vorentwurfCfg = PROMPTS['vorentwurf'];
-  html+=`<div style="border:2px solid #c0392b;border-radius:10px;padding:16px 18px;background:#fff9f9;margin-bottom:12px;display:flex;gap:16px;align-items:center">
+  let html=`<div style="border:2px solid #c0392b;border-radius:10px;padding:16px 18px;background:#fff9f9;margin-bottom:12px;display:flex;gap:16px;align-items:center">
     <div style="font-size:36px;flex-shrink:0">🧙</div>
     <div style="flex:1">
       <div style="font-size:14px;font-weight:700;color:#c0392b;margin-bottom:4px">${vorentwurfCfg.label}</div>
@@ -1206,6 +1193,19 @@ ${ctx}`
     oben im Manager auf <strong>⬆ JSON laden</strong> klicken → LV erscheint sofort in der Sidebar
   </div>`;
 
+  html+=`<div style="background:#e8f4fd;border:1.5px solid #2980b9;border-radius:8px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
+    <span style="font-size:22px">🤖</span>
+    <div>
+      <strong style="color:#1e3a5f;font-size:13px">Claude-Analyse – kostenlos über claude.ai</strong><br>
+      <span style="font-size:11px;color:#1a5f8a;line-height:1.6">
+        Wähle einen Analyse-Typ → der Prompt wird mit deinem LV in die <strong>Zwischenablage</strong> kopiert →
+        öffne <a href="https://claude.ai" target="_blank" style="color:#1e3a5f;font-weight:700">claude.ai</a>
+        → einfügen → fertig. Kein API-Key, keine Kosten.
+      </span>
+    </div>
+  </div>`;
+
+  // Analyse-Karten
   html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`;
   Object.entries(PROMPTS).forEach(([key,cfg])=>{
     if(key==='vorentwurf') return; // schon oben gerendert
@@ -1296,7 +1296,9 @@ function buildLVContext(p){
   ctx+=`Bauvorhaben: ${p.ort}\n`;
   ctx+=`AG: ${p.ag} | AN: ${p.an||'—'} | BL: ${p.bl} | LV-Nr: ${p.lvnr}\n`;
   ctx+=`Ausführung: ${p.ausfzeit||'—'} | Vergabeart: ${p.vergabeart||'—'}\n`;
-  ctx+=`Leistungsgrenze: ${p.leistgrenze||'—'} | Normen: ${p.norm||'—'}\n\n`;
+  ctx+=`Leistungsgrenze: ${p.leistgrenze||'—'} | Normen: ${p.norm||'—'}\n`;
+  if(p.notes && p.notes.trim()) ctx+=`\nNOTIZEN / BESONDERHEITEN:\n${p.notes.trim()}\n`;
+  ctx+=`\n`;
   p.sections.forEach((sec,si)=>{
     ctx+=`--- Abschnitt ${si+1}: ${sec.title} ---\n`;
     sec.positions.forEach(pos=>{
