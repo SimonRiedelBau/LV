@@ -1021,17 +1021,20 @@ function renderAnalyse(container) {
 // CLAUDE TAB — Zwischenablage-Schnittstelle (kostenlos)
 // ════════════════════════════════════════════════════════════════════════
 function renderClaude(container) {
-  const p=getActive(); if(!p) return;
+  const p = getActive(); if(!p) return;
 
-  const PROMPTS = {
-    vorentwurf: {
-      label: '🧙 LV-Vorentwurf erstellen',
-      color: '#c0392b',
-      desc: 'Claude erstellt einen vollständigen LV-Vorentwurf als JSON – direkt importierbar in den Manager.',
-      build: (p,ctx) => `Du bist VOB-Experte und Bauleiter bei Riedel Bau AG.
+  // ctx ZUERST definieren – wird in allen Prompts benötigt
+  const ctx = buildLVContext(p);
+  const lineCount = ctx.split('\n').length;
+
+  const el = document.createElement('div');
+  el.style.cssText = 'display:flex;flex-direction:column;gap:14px;max-width:900px';
+
+  // ── 1. VORENTWURF – prominent ganz oben ─────────────────────────────
+  const vorentwurfPrompt = `Du bist VOB-Experte und Bauleiter bei Riedel Bau AG.
 
 Erstelle einen vollständigen LV-Vorentwurf für folgendes Projekt.
-Nutze die vorhandenen Stammdaten und ergänze fehlende Positionen nach VOB/C.
+Nutze die vorhandenen Stammdaten und ergänze alle fehlenden Positionen nach VOB/C.
 
 PROJEKTDATEN:
 ${ctx}
@@ -1041,15 +1044,17 @@ ANFORDERUNGEN:
 2. Alle branchenüblichen Positionen inkl. Eventualpositionen
 3. Mengen und Einheitspreise LEER lassen
 4. VOB-Status je Position: ok / warn / gap / star
-5. VOB-Referenz und Handlungsempfehlung bei kritischen Positionen
+   ok=klar geregelt | warn=Klärungsbedarf | gap=Lücke/Nebenleistung | star=Besondere Leistung
+5. VOB-Referenz und Handlungsempfehlung bei kritischen Positionen (status!=ok)
+6. Eventualpositionen am Ende: Grundwasser, Mehrtiefe, Stundenlohn
 
-AUSGABE: NUR reines JSON, kein Text davor oder danach, keine Backticks.
+AUSGABE: NUR reines JSON – kein Text davor oder danach, keine Backticks, kein Markdown.
 
 {
   "name": "${p.name}",
   "gewerk": "${p.gewerk}",
   "ort": "${p.ort||''}",
-  "ag": "${p.ag||''}",
+  "ag": "${p.ag||'Riedel Bau AG'}",
   "bl": "${p.bl||''}",
   "lvnr": "${p.lvnr||''}",
   "datum": "${p.datum||''}",
@@ -1057,7 +1062,7 @@ AUSGABE: NUR reines JSON, kein Text davor oder danach, keine Backticks.
   "vergabeart": "${p.vergabeart||''}",
   "leistgrenze": "${p.leistgrenze||''}",
   "norm": "${p.norm||''}",
-  "notes": "Wichtige Hinweise eintragen",
+  "notes": "Wichtige Hinweise",
   "sections": [
     {
       "id": "s1",
@@ -1066,7 +1071,7 @@ AUSGABE: NUR reines JSON, kein Text davor oder danach, keine Backticks.
         {
           "id": "p1",
           "oz": "01.01",
-          "desc": "Kurztitel\nDetaillierte Beschreibung nach VOB/C",
+          "desc": "Kurztitel\\nDetaillierte Beschreibung nach VOB/C",
           "unit": "m",
           "menge": "",
           "ep": "",
@@ -1078,172 +1083,110 @@ AUSGABE: NUR reines JSON, kein Text davor oder danach, keine Backticks.
       ]
     }
   ]
-}`
-    },
+}`;
+
+  // ── 2. ANALYSE-PROMPTS ────────────────────────────────────────────────
+  const ANALYSE = {
     vob: {
-      label: '🔍 Vollständige VOB-Analyse',
-      color: '#1e3a5f',
+      label: '🔍 Vollständige VOB-Analyse', color: '#1e3a5f',
       desc: 'Analysiert jede Position nach VOB/B & VOB/C mit Einordnung und Handlungsempfehlung.',
-      build: (p,ctx) => `Du bist VOB-Experte und Bauleiter bei Riedel Bau AG. Analysiere das folgende Leistungsverzeichnis vollständig.
-
-Für jede Position liefere:
-- Einordnung: ✅ Klar geregelt | ⚠️ Klärungsbedarf | 🔴 Lücke/Nebenleistung | ⭐ Besondere Leistung (Nachtrag)
-- Konkrete VOB-Referenz (Paragraph + ATV-Norm)
-- Handlungsempfehlung
-
-Unterscheide klar zwischen:
-- Nebenleistungen nach ATV DIN 18306 Abschn. 4 (nicht extra vergütbar)
-- Besonderen Leistungen (vergütungspflichtig, Nachtragsrelevanz)
-
-Markiere kritische Positionen mit: „Empfehlung: Schriftliche Klärung mit AG vor Ausführung"
-
-${ctx}`
+      prompt: `Du bist VOB-Experte bei Riedel Bau AG. Analysiere das folgende LV vollständig.\n\nFür jede Position:\n- Einordnung: ✅ Klar geregelt | ⚠️ Klärungsbedarf | 🔴 Lücke/Nebenleistung | ⭐ Besondere Leistung\n- Konkrete VOB-Referenz (Paragraph + ATV-Norm)\n- Handlungsempfehlung\n\nMarkiere kritische Positionen: „Empfehlung: Schriftliche Klärung mit AG vor Ausführung"\n\n${ctx}`
     },
     luecken: {
-      label: '🔴 Lücken & fehlende Positionen',
-      color: '#c0392b',
+      label: '🔴 Lücken & fehlende Positionen', color: '#dc2626',
       desc: 'Welche Leistungen fehlen, müssen aber trotzdem erbracht werden?',
-      build: (p,ctx) => `Du bist VOB-Experte bei Riedel Bau AG. Analysiere das LV auf fehlende Positionen.
-
-Aufgabe: Identifiziere alle Leistungen, die:
-1. Im LV fehlen, aber trotzdem erbracht werden müssen (Nebenleistungen nach VOB/C)
-2. Im LV fehlen und als Besondere Leistung nachtragsrelevant sind
-3. Unklar formuliert sind und Nachtragsrisiken bergen
-
-Strukturiere deine Antwort:
-A) Fehlende Nebenleistungen (kein Nachtrag möglich)
-B) Fehlende Besondere Leistungen (Nachtrag möglich → sofort aufnehmen!)
-C) Unklare Positionen (Klärungsbedarf)
-
-${ctx}`
+      prompt: `Du bist VOB-Experte bei Riedel Bau AG. Identifiziere alle fehlenden Positionen.\n\nA) Fehlende Nebenleistungen (kein Nachtrag möglich nach VOB/C)\nB) Fehlende Besondere Leistungen (Nachtrag möglich → sofort aufnehmen!)\nC) Unklare Positionen (Klärungsbedarf)\n\n${ctx}`
     },
     nachtrag: {
-      label: '⭐ Nachtragsrisiken',
-      color: '#d97706',
+      label: '⭐ Nachtragsrisiken', color: '#d97706',
       desc: 'Wo drohen Nachträge? Priorisiert nach Eintrittswahrscheinlichkeit.',
-      build: (p,ctx) => `Du bist Bauleiter und VOB-Experte bei Riedel Bau AG. Bewerte das Nachtragsrisiko dieses LV.
-
-Erstelle eine priorisierte Risikoliste:
-🔴 HOHES RISIKO (wahrscheinlicher Nachtrag)
-🟡 MITTLERES RISIKO (möglich bei Abweichungen)
-🟢 GERINGES RISIKO (gut abgesichert)
-
-Für jedes Risiko: Beschreibung, Ursache, empfohlene Absicherung (VOB-Referenz).
-
-${ctx}`
+      prompt: `Du bist Bauleiter bei Riedel Bau AG. Bewerte das Nachtragsrisiko.\n\n🔴 HOHES RISIKO | 🟡 MITTLERES RISIKO | 🟢 GERINGES RISIKO\n\nFür jedes Risiko: Beschreibung, Ursache, Absicherung (VOB-Referenz).\n\n${ctx}`
     },
     summary: {
-      label: '📋 Management-Zusammenfassung',
-      color: '#16a34a',
+      label: '📋 Management-Zusammenfassung', color: '#16a34a',
       desc: 'Kurze Zusammenfassung für Projektleitung / Geschäftsführung.',
-      build: (p,ctx) => `Erstelle eine kompakte Management-Zusammenfassung dieses Leistungsverzeichnisses für die Projektleitung.
-
-Struktur:
-1. Leistungsumfang (2-3 Sätze)
-2. Finanzieller Überblick (Netto, MwSt, Brutto)
-3. Kritische Punkte (max. 5 Bulletpoints)
-4. Empfohlene nächste Schritte
-
-${ctx}`
+      prompt: `Erstelle eine kompakte Management-Zusammenfassung:\n1. Leistungsumfang (2-3 Sätze)\n2. Finanzieller Überblick\n3. Kritische Punkte (max. 5)\n4. Empfohlene nächste Schritte\n\n${ctx}`
     },
     gaeb: {
-      label: '📄 GAEB / iTWO-Prüfung',
-      color: '#7c3aed',
+      label: '📄 GAEB / iTWO-Prüfung', color: '#7c3aed',
       desc: 'Ist das LV für GAEB DA83 / iTWO-Import geeignet? Was fehlt?',
-      build: (p,ctx) => `Prüfe dieses Leistungsverzeichnis auf GAEB DA83-Konformität für den Import in iTWO (RIB Software).
-
-Prüfe:
-1. Vollständigkeit der Ordnungszahlen (OZ-Struktur)
-2. Eindeutigkeit der Leistungsbeschreibungen
-3. Korrektheit der Mengeneinheiten (GAEB-konforme ME)
-4. Fehlende Pflichtfelder für DA83
-5. Empfehlungen für sauberen iTWO-Import
-
-${ctx}`
+      prompt: `Prüfe dieses LV auf GAEB DA83-Konformität für iTWO.\n\n1. OZ-Struktur vollständig?\n2. Leistungsbeschreibungen eindeutig?\n3. GAEB-konforme Mengeneinheiten?\n4. Fehlende Pflichtfelder?\n5. Empfehlungen für sauberen iTWO-Import?\n\n${ctx}`
     },
   };
 
-  const el=document.createElement('div');
-  el.style.cssText='display:flex;flex-direction:column;gap:16px;max-width:860px';
+  // ── HTML AUFBAUEN ─────────────────────────────────────────────────────
+  let html = '';
 
-  // Info Banner
-  // Vorentwurf-Karte zuerst, groß und prominent
-  const vorentwurfCfg = PROMPTS['vorentwurf'];
-  let html=`<div style="border:2px solid #c0392b;border-radius:10px;padding:16px 18px;background:#fff9f9;margin-bottom:12px;display:flex;gap:16px;align-items:center">
-    <div style="font-size:36px;flex-shrink:0">🧙</div>
+  // Vorentwurf-Karte
+  html += `<div style="border:2px solid #c0392b;border-radius:10px;padding:16px 18px;background:#fff9f9;display:flex;gap:16px;align-items:center">
+    <div style="font-size:40px;flex-shrink:0">🧙</div>
     <div style="flex:1">
-      <div style="font-size:14px;font-weight:700;color:#c0392b;margin-bottom:4px">${vorentwurfCfg.label}</div>
-      <div style="font-size:11px;color:#6b7280;line-height:1.5;margin-bottom:10px">${vorentwurfCfg.desc}</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button data-pkey="vorentwurf" style="background:#c0392b;color:#fff;padding:9px 20px;font-size:12px;border-radius:6px;border:none;cursor:pointer;font-weight:700">
+      <div style="font-size:14px;font-weight:700;color:#c0392b;margin-bottom:4px">🧙 LV-Vorentwurf erstellen</div>
+      <div style="font-size:11px;color:#6b7280;line-height:1.5;margin-bottom:10px">
+        Claude erstellt einen vollständigen LV-Vorentwurf als JSON – direkt importierbar in den Manager.
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button id="btn-vorentwurf" style="background:#c0392b;color:#fff;padding:9px 20px;font-size:12px;border-radius:6px;border:none;cursor:pointer;font-weight:700">
           📋 Vorentwurf-Prompt kopieren
         </button>
         <button onclick="openWizard()" style="background:#fff;color:#c0392b;padding:9px 16px;font-size:12px;border-radius:6px;border:2px solid #c0392b;cursor:pointer;font-weight:700">
           🧙 Assistent öffnen
         </button>
-        <span style="font-size:10px;color:#9ca3af">→ Stammdaten noch leer? Erst Assistent nutzen</span>
+        <span style="font-size:10px;color:#9ca3af">Stammdaten noch leer? Erst Assistent nutzen</span>
       </div>
     </div>
   </div>`;
 
   // Import-Anleitung
-  html+=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:10px 14px;font-size:11px;color:#166534;margin-bottom:12px;line-height:1.7">
-    <strong>📥 Nach dem Kopieren:</strong>
-    claude.ai öffnen → Prompt einfügen → JSON aus Antwort kopieren →
-    oben im Manager auf <strong>⬆ JSON laden</strong> klicken → LV erscheint sofort in der Sidebar
+  html += `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:10px 14px;font-size:11px;color:#166534;line-height:1.7">
+    <strong>📥 Ablauf nach dem Kopieren:</strong>
+    claude.ai öffnen → Prompt einfügen (Strg+V) → JSON aus Antwort kopieren →
+    oben im Manager auf <strong>⬆ JSON laden</strong> klicken → LV erscheint sofort in der Sidebar und ist direkt bearbeitbar
   </div>`;
 
-  html+=`<div style="background:#e8f4fd;border:1.5px solid #2980b9;border-radius:8px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
-    <span style="font-size:22px">🤖</span>
+  // Info-Banner
+  html += `<div style="background:#e8f4fd;border:1.5px solid #2980b9;border-radius:8px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start">
+    <span style="font-size:18px">🤖</span>
     <div>
-      <strong style="color:#1e3a5f;font-size:13px">Claude-Analyse – kostenlos über claude.ai</strong><br>
-      <span style="font-size:11px;color:#1a5f8a;line-height:1.6">
-        Wähle einen Analyse-Typ → der Prompt wird mit deinem LV in die <strong>Zwischenablage</strong> kopiert →
-        öffne <a href="https://claude.ai" target="_blank" style="color:#1e3a5f;font-weight:700">claude.ai</a>
-        → einfügen → fertig. Kein API-Key, keine Kosten.
-      </span>
+      <strong style="color:#1e3a5f;font-size:12px">Weitere Analyse-Prompts – kostenlos über claude.ai</strong><br>
+      <span style="font-size:10px;color:#1a5f8a">Prompt kopieren → <a href="https://claude.ai" target="_blank" style="color:#1e3a5f;font-weight:700">claude.ai</a> öffnen → einfügen. Kein API-Key, keine Kosten.</span>
     </div>
   </div>`;
 
   // Analyse-Karten
-  html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`;
-  Object.entries(PROMPTS).forEach(([key,cfg])=>{
-    if(key==='vorentwurf') return; // schon oben gerendert
-    html+=`<div style="border:1.5px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff;display:flex;flex-direction:column;gap:8px">
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`;
+  Object.entries(ANALYSE).forEach(([key, cfg]) => {
+    html += `<div style="border:1.5px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff;display:flex;flex-direction:column;gap:8px">
       <div style="font-size:13px;font-weight:700;color:${cfg.color}">${cfg.label}</div>
       <div style="font-size:11px;color:#6b7280;line-height:1.5;flex:1">${cfg.desc}</div>
-      <button data-pkey="${key}" style="background:${cfg.color};color:#fff;padding:7px 14px;font-size:11px;border-radius:5px;border:none;cursor:pointer;font-weight:700;text-align:left">
+      <button data-akey="${key}" style="background:${cfg.color};color:#fff;padding:7px 14px;font-size:11px;border-radius:5px;border:none;cursor:pointer;font-weight:700">
         📋 Prompt kopieren
       </button>
     </div>`;
   });
-  html+=`</div>`;
+  html += `</div>`;
 
   // LV-Vorschau
-  const ctx=buildLVContext(p);
-  const lineCount=ctx.split('\n').length;
-  html+=`<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
-    <div style="background:#f9fafb;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb">
+  html += `<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+    <div style="background:#f9fafb;padding:8px 12px;display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb">
       <span style="font-size:11px;font-weight:700;color:#374151">📄 LV-Inhalt (wird dem Prompt angehängt)</span>
       <span style="font-size:10px;color:#9ca3af">${lineCount} Zeilen | ${ctx.length} Zeichen</span>
     </div>
-    <pre style="padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#374151;
-      background:#fff;overflow:auto;max-height:240px;white-space:pre-wrap;line-height:1.5;margin:0">${esc(ctx.substring(0,2000))}${ctx.length>2000?'\n… ('+Math.round(ctx.length/1000)+'k Zeichen gesamt)':''}</pre>
-  </div>
+    <pre style="padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#374151;background:#fff;overflow:auto;max-height:200px;white-space:pre-wrap;line-height:1.5;margin:0">${esc(ctx.substring(0,2000))}${ctx.length>2000?'\n… ('+Math.round(ctx.length/1000)+'k Zeichen gesamt)':''}</pre>
+  </div>`;
 
-  <!-- Manueller Prompt -->
-  <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff">
+  // Eigene Frage
+  html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fff">
     <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">✏️ Eigene Frage formulieren</div>
     <div style="display:flex;gap:8px">
-      <textarea id="custom-prompt" rows="3" placeholder="z.B. 'Welche Positionen fehlen nach ATV DIN 18306 für Grundleitungen? Gibt es Nachtragsrisiken durch die Altleitungen?'"
+      <textarea id="custom-prompt" rows="3" placeholder="z.B. 'Welche Positionen fehlen nach ATV DIN 18306? Gibt es Nachtragsrisiken durch Altleitungen?'"
         style="flex:1;border:1.5px solid #d1d5db;border-radius:6px;padding:8px 10px;font-size:12px;resize:vertical;font-family:inherit;line-height:1.5"></textarea>
-      <button id="copy-custom" style="background:#1e3a5f;color:#fff;padding:8px 16px;font-size:11px;border-radius:6px;border:none;cursor:pointer;font-weight:700;align-self:flex-end;white-space:nowrap">
+      <button id="copy-custom" style="background:#1e3a5f;color:#fff;padding:8px 14px;font-size:11px;border-radius:6px;border:none;cursor:pointer;font-weight:700;align-self:flex-end;white-space:nowrap">
         📋 Kopieren
       </button>
     </div>
   </div>
 
-  <!-- Schnell-Link -->
   <div style="display:flex;gap:8px;align-items:center">
     <a href="https://claude.ai" target="_blank"
       style="background:#1e3a5f;color:#fff;padding:9px 18px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
@@ -1252,25 +1195,28 @@ ${ctx}`
     <span style="font-size:11px;color:#9ca3af">→ Prompt einfügen (Strg+V) → Analyse starten</span>
   </div>`;
 
-  el.innerHTML=html;
+  el.innerHTML = html;
   container.appendChild(el);
 
-  // Button events
-  el.querySelectorAll('[data-pkey]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const cfg=PROMPTS[btn.dataset.pkey];
-      const fullPrompt=cfg.build(p,ctx);
-      copyToClipboard(fullPrompt, cfg.label);
+  // Events
+  document.getElementById('btn-vorentwurf')?.addEventListener('click', () => {
+    copyToClipboard(vorentwurfPrompt, 'LV-Vorentwurf');
+  });
+
+  el.querySelectorAll('[data-akey]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cfg = ANALYSE[btn.dataset.akey];
+      if(cfg) copyToClipboard(cfg.prompt, cfg.label);
     });
   });
 
-  document.getElementById('copy-custom')?.addEventListener('click',()=>{
-    const custom=document.getElementById('custom-prompt')?.value?.trim();
-    if(!custom){toast('Bitte erst eine Frage eingeben','warn');return;}
-    const fullPrompt=custom+'\n\n'+ctx;
-    copyToClipboard(fullPrompt,'Eigener Prompt');
+  document.getElementById('copy-custom')?.addEventListener('click', () => {
+    const custom = document.getElementById('custom-prompt')?.value?.trim();
+    if(!custom){ toast('Bitte erst eine Frage eingeben','warn'); return; }
+    copyToClipboard(custom + '\n\n' + ctx, 'Eigener Prompt');
   });
 }
+
 
 function copyToClipboard(text, label) {
   navigator.clipboard.writeText(text).then(()=>{
