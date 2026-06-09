@@ -255,6 +255,7 @@ button:active{transform:scale(.98)}
     <div class="tb-sep"></div>
     <button class="tb-btn red" onclick="openWizard()">+ Neues LV</button>
     <button class="tb-btn ghost" onclick="importJSON()">⬆ JSON laden</button>
+    <button class="tb-btn" style="background:#2563eb;color:#fff;font-size:11px;padding:5px 12px" onclick="showGAEBImport()">⬆ GAEB Import</button>
     <button class="tb-btn ghost" onclick="exportAllJSON()">⬇ Backup</button>
     <div class="tb-spacer"></div>
     <span class="tb-status" id="tb-status"></span>
@@ -324,6 +325,7 @@ button:active{transform:scale(.98)}
 
 <div id="toast"></div>
 <input type="file" id="json-file-in" accept=".json" style="display:none" onchange="handleJSONImport(this)">
+<input type="file" id="gaeb-file-in" accept=".x83,.X83,.xml,.XML,.p83,.P83,.d83,.D83" style="display:none" onchange="handleGAEBImport(this)">
 
 <script>
 // ════════════════════════════════════════════════════════════════════════
@@ -1286,10 +1288,10 @@ function renderArchiv(container) {
       <td style="font-size:11px;color:var(--muted)">${new Date(p.createdAt).toLocaleDateString('de-DE')}</td>
       <td style="font-size:11px;color:var(--muted)">${new Date(p.updatedAt).toLocaleDateString('de-DE')}</td>
       <td><div class="arch-act">
-        <button class="arch-btn" style="background:var(--light);color:var(--dark)" onclick="openProject('${p.id}');switchTab('lv')">✏ Öffnen</button>
-        <button class="arch-btn" style="background:var(--gbg);color:var(--green)" onclick="activeId='${p.id}';exportExcel()">⬇ XLS</button>
-        <button class="arch-btn" style="background:#e0e7ff;color:#3730a3" onclick="activeId='${p.id}';exportGAEB()">⬇ GAEB</button>
-        <button class="arch-btn" style="background:var(--rbg);color:#dc2626" onclick="deleteProjectPermanent('${p.id}')">🗑</button>
+        <button class="arch-btn" style="background:var(--light);color:var(--dark)" data-open="${p.id}">✏ Öffnen</button>
+        <button class="arch-btn" style="background:var(--gbg);color:var(--green)" data-xls="${p.id}">⬇ XLS</button>
+        <button class="arch-btn" style="background:#e0e7ff;color:#3730a3" data-gaeb="${p.id}">⬇ GAEB</button>
+        <button class="arch-btn" style="background:var(--rbg);color:#dc2626" data-del="${p.id}">🗑</button>
       </div></td>
     </tr>`;
   });
@@ -1297,6 +1299,17 @@ function renderArchiv(container) {
   const el=document.createElement('div');
   el.innerHTML=html;
   container.appendChild(el);
+
+  // Event delegation – löst Archiv-Button-Problem
+  el.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    if(btn.dataset.open)  { openProject(btn.dataset.open); switchTab('lv'); }
+    if(btn.dataset.xls)   { activeId=btn.dataset.xls; exportExcel(); }
+    if(btn.dataset.gaeb)  { activeId=btn.dataset.gaeb; exportGAEB(); }
+    if(btn.dataset.del)   { deleteProjectPermanent(btn.dataset.del); }
+  });
+}dChild(el);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1422,6 +1435,177 @@ function exportGAEB(){
 
 function xmlEsc(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// GAEB IMPORT (DA81/DA83/X83 → LV)
+// ════════════════════════════════════════════════════════════════════════
+function showGAEBImport() {
+  document.getElementById('gaeb-file-in').click();
+}
+
+function handleGAEBImport(input) {
+  const f = input.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const xml = e.target.result;
+      const lv = parseGAEB(xml, f.name);
+      if(!lv) { toast('GAEB konnte nicht gelesen werden – Datei prüfen','err'); return; }
+      // Projekt-Zuordnung
+      lv.projektId = activeProjektId || null;
+      DB.projects.unshift(lv);
+      saveDB();
+      renderSidebar();
+      openProject(lv.id);
+      toast(`✓ GAEB importiert: "${lv.name}" – ${lv.sections.reduce((s,sec)=>s+sec.positions.length,0)} Positionen`);
+    } catch(err) {
+      console.error(err);
+      toast('Fehler beim GAEB-Import: ' + err.message, 'err');
+    }
+  };
+  r.readAsText(f, 'UTF-8');
+  input.value = '';
+}
+
+function parseGAEB(xmlStr, filename) {
+  // XML parsen
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+  const parseError = doc.querySelector('parsererror');
+  if(parseError) throw new Error('Ungültiges XML');
+
+  // Namespace-agnostisch: alle Tags per localName suchen
+  function getEls(parent, tag) {
+    return Array.from(parent.querySelectorAll('*')).filter(el => el.localName === tag);
+  }
+  function getText(parent, tag) {
+    const els = getEls(parent, tag);
+    return els.length ? (els[0].textContent||'').trim() : '';
+  }
+
+  // Projektinfos
+  const projName  = getText(doc, 'LblPrj') || getText(doc, 'NamePrj') || filename.replace(/\.\w+$/,'');
+  const ort       = getText(doc, 'OrtPrj') || getText(doc, 'NamePrj') || '';
+  const ag        = getText(doc, 'AG') || 'Riedel Bau AG';
+  const lvnr      = getText(doc, 'LblPrj') || '';
+  const datum     = getText(doc, 'Date') || new Date().toLocaleDateString('de-DE');
+
+  // Positionen parsen – DA83 / X83 Struktur
+  // Positionen sind <Pos> oder <BoQItem> oder <Item> je nach Version
+  const posEls = getEls(doc, 'Pos').length > 0
+    ? getEls(doc, 'Pos')
+    : getEls(doc, 'BoQItem').length > 0
+      ? getEls(doc, 'BoQItem')
+      : getEls(doc, 'Item');
+
+  // Sections aus den Positionen ableiten
+  const sectionsMap = {};
+  const sectionOrder = [];
+  let posCount = 0;
+
+  posEls.forEach(pos => {
+    const posTyp  = getText(pos, 'PosTyp') || pos.getAttribute('RNoPart') || '0';
+    const posId   = getText(pos, 'PosID') || getText(pos, 'RNoPos') || uid();
+    const oz      = getText(pos, 'RNoPos') || getText(pos, 'PosID') || '';
+    const qty     = getText(pos, 'Qty') || getText(pos, 'Menge') || '';
+    const unit    = getText(pos, 'QU') || getText(pos, 'ME') || getText(pos, 'Unit') || 'psch';
+    const ep      = getText(pos, 'UP') || getText(pos, 'EP') || '';
+    const secId   = getText(pos, 'RNoPart') || 's1';
+
+    // Beschreibung: DetailTxt > ShortText > Text > LongText
+    const detailEl   = getEls(pos, 'DetailTxt');
+    const shortEl    = getEls(pos, 'ShortText');
+    const longEl     = getEls(pos, 'LongText');
+    let desc = '';
+    if(detailEl.length) {
+      // Kurztitel aus erstem Satz, dann Rest
+      const textEls = getEls(detailEl[0], 'Text');
+      desc = textEls.map(t=>(t.textContent||'').trim()).filter(Boolean).join('
+');
+    }
+    if(!desc && shortEl.length) desc = (shortEl[0].textContent||'').trim();
+    if(!desc && longEl.length) desc = (longEl[0].textContent||'').trim();
+    if(!desc) desc = getText(pos, 'Text') || '(Keine Beschreibung)';
+
+    // Abschnittsheader (PosTyp 1 = Titel/Abschnitt)
+    if(posTyp === '1' || posTyp === 'title' || (!oz && desc)) {
+      if(!sectionsMap[secId]) {
+        sectionsMap[secId] = { id: uid(), title: desc || 'Abschnitt', positions: [] };
+        sectionOrder.push(secId);
+      } else {
+        sectionsMap[secId].title = desc;
+      }
+      return;
+    }
+
+    // Sicherstellen dass Section existiert
+    if(!sectionsMap[secId]) {
+      sectionsMap[secId] = { id: uid(), title: 'Abschnitt ' + secId, positions: [] };
+      sectionOrder.push(secId);
+    }
+
+    posCount++;
+    sectionsMap[secId].positions.push({
+      id: uid(),
+      oz: oz || String(posCount).padStart(4,'0'),
+      desc: desc,
+      unit: normalizeUnit(unit),
+      menge: qty,
+      ep: ep,
+      status: 'ok',
+      vob: '',
+      note: '',
+      added: false,
+    });
+  });
+
+  // Falls keine Sections erkannt: alle Positionen in eine Section
+  if(sectionOrder.length === 0) {
+    return null;
+  }
+
+  // Leere Sections entfernen, aber mind. eine behalten
+  const sections = sectionOrder
+    .map(id => sectionsMap[id])
+    .filter(s => s.positions.length > 0 || sectionOrder.length === 1);
+
+  if(sections.length === 0) {
+    // Fallback: alle Pos in eine Section
+    const allPos = posEls.map(pos => {
+      const oz   = getText(pos,'RNoPos')||getText(pos,'PosID')||'';
+      const qty  = getText(pos,'Qty')||'';
+      const unit = getText(pos,'QU')||getText(pos,'ME')||'psch';
+      const ep   = getText(pos,'UP')||'';
+      const desc = getText(pos,'Text')||getText(pos,'LongText')||getText(pos,'ShortText')||'(keine Beschreibung)';
+      return { id:uid(), oz, desc, unit:normalizeUnit(unit), menge:qty, ep, status:'ok', vob:'', note:'', added:false };
+    }).filter(p => p.desc !== '(keine Beschreibung)' || p.oz);
+
+    if(allPos.length === 0) return null;
+    sections.push({ id:uid(), title:'Importierte Positionen', positions:allPos });
+  }
+
+  return {
+    id: uid(),
+    name: projName,
+    gewerk: 'DIN 18299 – Allgemeine Regelungen',
+    ort, ag, an:'', bl:'', lvnr,
+    datum, ausfzeit:'', vergabeart:'', leistgrenze:'', norm:'',
+    notes: `Importiert aus GAEB-Datei: ${filename}`,
+    normArr: [],
+    sections,
+    archived: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    chat: [],
+    projektId: null,
+  };
+}
+
+function normalizeUnit(u) {
+  const map = {'M':'m','M2':'m²','M3':'m³','STK':'Stk','STCK':'Stk','PSC':'psch','PSCH':'psch',
+    'STD':'Std','KG':'kg','T':'t','L':'l','M2':'m²','M3':'m³'};
+  return map[u.toUpperCase()] || u || 'psch';
 }
 
 // ════════════════════════════════════════════════════════════════════════
