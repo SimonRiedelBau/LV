@@ -345,7 +345,7 @@ button:active{transform:scale(.98)}
   </div>
 </div>
 
-<input type="file" id="json-file-in" accept=".json" style="display:none" onchange="handleJSONImport(this)">
+<input type="file" id="json-file-in" accept=".json,.txt,.md,application/json,text/plain" style="display:none" onchange="handleJSONImport(this)">
 <input type="file" id="gaeb-file-in" accept=".x83,.X83,.xml,.XML,.p83,.P83,.d83,.D83" style="display:none" onchange="handleGAEBImport(this)">
 
 <script>
@@ -1645,19 +1645,130 @@ function exportAllJSON(){
   a.download='LV-Manager-Backup-'+new Date().toISOString().slice(0,10)+'.json';
   a.click(); toast('Backup exportiert');
 }
-function importJSON(){document.getElementById('json-file-in').click();}
+// ── JSON robust herausschneiden: Claude liefert oft ```json-Fences oder Fließtext ──
+function extractJSON(text){
+  let t=String(text||'').replace(/^\uFEFF/,'').trim();
+  if(!t) throw new Error('Datei/Feld ist leer');
+  const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(fence) t=fence[1].trim();
+  try{ return JSON.parse(t); }catch(e){}
+  // Fallback: von der ersten Klammer bis zur letzten
+  const starts=[t.indexOf('{'),t.indexOf('[')].filter(i=>i>=0);
+  if(!starts.length) throw new Error('Kein JSON erkennbar');
+  const s=Math.min(...starts);
+  const e=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));
+  if(e<=s) throw new Error('JSON unvollständig (Klammer fehlt)');
+  return JSON.parse(t.slice(s,e+1));
+}
+
+// ── Fremdes LV-Objekt auf das interne Schema bringen ──
+function normalizeLV(o, keepIds){
+  if(!o||typeof o!=='object'||Array.isArray(o)) throw new Error('Kein LV-Objekt');
+  const str=v=>(v===null||v===undefined)?'':String(v);
+  const secs=Array.isArray(o.sections)?o.sections:[];
+  return {
+    id: (keepIds&&o.id)?o.id:uid(),
+    name: str(o.name)||'Importiertes LV',
+    gewerk: str(o.gewerk)||'DIN 18299 – Allgemeine Regelungen',
+    ort:str(o.ort), ag:str(o.ag)||'Riedel Bau AG', an:str(o.an), bl:str(o.bl), lvnr:str(o.lvnr),
+    datum: str(o.datum)||new Date().toLocaleDateString('de-DE'),
+    ausfzeit:str(o.ausfzeit), leistgrenze:str(o.leistgrenze),
+    norm:str(o.norm),
+    normArr: Array.isArray(o.normArr)?o.normArr
+           : (o.norm?String(o.norm).split(',').map(s=>s.trim()).filter(Boolean):[]),
+    vergabeart:str(o.vergabeart), notes:str(o.notes),
+    sections: secs.map(sec=>({
+      id: (keepIds&&sec.id)?sec.id:uid(),
+      title: str(sec&&sec.title)||'Abschnitt',
+      positions: (Array.isArray(sec&&sec.positions)?sec.positions:[]).map(p=>({
+        id: (keepIds&&p.id)?p.id:uid(),
+        oz: str(p.oz),
+        desc: str(p.desc),
+        unit: str(p.unit)||'psch',
+        menge: str(p.menge),
+        ep: str(p.ep),
+        status: STATUS_CFG[p.status]?p.status:'ok',
+        vob: str(p.vob),
+        note: str(p.note),
+        added: !!p.added,
+      })),
+    })),
+    archived: !!o.archived,
+    createdAt: Number(o.createdAt)||Date.now(),
+    updatedAt: Date.now(),
+    chat: [],
+    projektId: (o.projektId!==undefined&&o.projektId!==null)?o.projektId:activeProjektId,
+  };
+}
+
+function mergeProjekte(arr){
+  if(!Array.isArray(arr)) return;
+  if(!DB.projekte) DB.projekte=[];
+  arr.forEach(p=>{ if(p&&p.id&&!DB.projekte.some(x=>x.id===p.id)) DB.projekte.push(p); });
+}
+
+// ── Kernstück: akzeptiert Backup, Array UND einzelnes LV ──
+function importLVData(raw){
+  const d=extractJSON(raw);
+  let list, keepIds=false;
+  if(d&&Array.isArray(d.projects)){                       // Backup-Datei
+    list=d.projects; keepIds=true;
+    if(d.apiKey&&!DB.apiKey) DB.apiKey=d.apiKey;
+    mergeProjekte(d.projekte);
+  }
+  else if(Array.isArray(d)) list=d;                        // Array von LVs
+  else if(d&&(Array.isArray(d.sections)||d.name)) list=[d];// einzelnes LV (Claude-Vorentwurf)
+  else throw new Error('Kein LV erkannt – erwartet wird ein Objekt mit "sections"');
+
+  const lvs=list.map(o=>normalizeLV(o,keepIds));
+  if(!lvs.length) throw new Error('Datei enthält keine LVs');
+
+  DB.projects=[...lvs,...DB.projects];
+  saveDB(); renderSidebar(); openProject(lvs[0].id);
+  const posN=lvs.reduce((s,lv)=>s+posCount(lv),0);
+  toast(`✓ ${lvs.length} LV${lvs.length!==1?'s':''} importiert – ${posN} Positionen`);
+  return lvs;
+}
+
+// ── Import-Dialog: Einfügen ODER Datei ──
+function importJSON(){
+  const bg=document.createElement('div');
+  bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal" style="max-width:620px">
+    <h3>⬆ LV importieren</h3>
+    <p>JSON aus der Claude-Antwort hier einfügen (Strg+V). Markdown-Backticks und Text
+    drumherum werden automatisch entfernt. Alternativ eine Backup- oder JSON-Datei laden.</p>
+    <textarea id="imp-ta" rows="10" placeholder='{ "name": "...", "sections": [ ... ] }'
+      style="width:100%;border:1.5px solid var(--border);border-radius:6px;padding:9px 11px;
+      font-family:'IBM Plex Mono',monospace;font-size:11px;resize:vertical;line-height:1.5"></textarea>
+    <div class="modal-btns">
+      <button id="imp-file" style="background:#eef2f7;color:var(--dark);padding:8px 14px;font-size:12px">📁 Datei wählen…</button>
+      <button id="imp-cancel" style="background:#eef2f7;color:var(--muted);padding:8px 14px;font-size:12px">Abbrechen</button>
+      <button id="imp-ok" style="background:var(--dark);color:#fff;padding:8px 18px;font-size:12px">Importieren</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+  bg.querySelector('#imp-cancel').onclick=close;
+  bg.querySelector('#imp-file').onclick=()=>{ close(); document.getElementById('json-file-in').click(); };
+  bg.querySelector('#imp-ok').onclick=()=>{
+    const txt=bg.querySelector('#imp-ta').value;
+    try{ importLVData(txt); close(); }
+    catch(err){ toast('Import fehlgeschlagen: '+err.message,'err'); }
+  };
+  setTimeout(()=>bg.querySelector('#imp-ta').focus(),0);
+}
+
 function handleJSONImport(input){
   const f=input.files[0]; if(!f) return;
   const r=new FileReader();
   r.onload=e=>{
-    try{
-      const d=JSON.parse(e.target.result);
-      if(d.projects){DB.projects=[...d.projects,...DB.projects];if(d.apiKey&&!DB.apiKey)DB.apiKey=d.apiKey;}
-      else if(Array.isArray(d))DB.projects=[...d,...DB.projects];
-      saveDB(); renderSidebar(); toast('Importiert: '+((d.projects||d).length)+' LVs');
-    }catch(err){toast('Ungültige Datei','err');}
+    try{ importLVData(e.target.result); }
+    catch(err){ console.error(err); toast('Import fehlgeschlagen: '+err.message,'err'); }
   };
-  r.readAsText(f); input.value='';
+  r.onerror=()=>toast('Datei konnte nicht gelesen werden','err');
+  r.readAsText(f,'UTF-8'); input.value='';
 }
 
 // ════════════════════════════════════════════════════════════════════════
