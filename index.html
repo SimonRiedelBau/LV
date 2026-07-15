@@ -306,9 +306,10 @@ button:active{transform:scale(.98)}
       <button class="tb-btn ghost" style="font-size:11px;padding:5px 12px" onclick="archiveProject()">🗄 Archivieren</button>
     </div>
   </div>
-  <div class="tab-body" id="tab-body">
+  <div class="tab-body" id="tab-body" style="display:none"></div>
+  <div class="tab-body" id="welcome">
     <!-- Welcome -->
-    <div class="welcome" id="welcome">
+    <div class="welcome">
       <div class="welcome-icon">📋</div>
       <h1>LV-Manager v2</h1>
       <p>Erstelle dein erstes Leistungsverzeichnis oder lade ein bestehendes Projekt.<br>
@@ -324,6 +325,26 @@ button:active{transform:scale(.98)}
 </div>
 
 <div id="toast"></div>
+
+<!-- LV-ASSISTENT (Wizard) -->
+<div class="wizard-bg" id="wizard-modal" style="display:none">
+  <div class="wizard">
+    <div class="wizard-hdr">
+      <span style="font-size:22px">🧙</span>
+      <h2>LV-Assistent</h2>
+      <div class="step-pills" id="wiz-pills"></div>
+      <button onclick="closeWizard()" title="Schließen"
+        style="background:rgba(255,255,255,.14);color:#fff;padding:4px 10px;font-size:13px;border-radius:4px">✕</button>
+    </div>
+    <div class="wizard-body" id="wizard-body"></div>
+    <div class="wizard-ftr">
+      <button class="wiz-back" id="wiz-back" onclick="wizBack()">← Zurück</button>
+      <span class="wiz-progress" id="wiz-progress"></span>
+      <button class="wiz-next" id="wiz-next" onclick="wizNext()">Weiter →</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="json-file-in" accept=".json" style="display:none" onchange="handleJSONImport(this)">
 <input type="file" id="gaeb-file-in" accept=".x83,.X83,.xml,.XML,.p83,.P83,.d83,.D83" style="display:none" onchange="handleGAEBImport(this)">
 
@@ -492,6 +513,16 @@ function defaultSections() {
 // ════════════════════════════════════════════════════════════════════════
 // PROJECT CRUD
 // ════════════════════════════════════════════════════════════════════════
+// Welcome-Screen liegt NEBEN #tab-body (nicht darin!), sonst löscht switchTab() ihn weg
+function showWelcome(show) {
+  const w=document.getElementById('welcome');
+  const b=document.getElementById('tab-body');
+  const t=document.getElementById('tabs-bar');
+  if(w) w.style.display = show ? '' : 'none';
+  if(b) b.style.display = show ? 'none' : '';
+  if(t) t.style.display = show ? 'none' : 'flex';
+}
+
 function getActive() { return DB.projects.find(p=>p.id===activeId)||null; }
 function getProject(id) { return DB.projects.find(p=>p.id===id)||null; }
 
@@ -512,8 +543,7 @@ function newProject() {
 
 function openProject(id) {
   activeId = id;
-  document.getElementById('welcome').style.display='none';
-  document.getElementById('tabs-bar').style.display='flex';
+  showWelcome(false);
   const p=getActive();
   // Archivierte LVs öffnen aber mit Hinweis
   if(p&&p.archived){
@@ -549,8 +579,7 @@ function deleteProjectPermanent(id) {
   DB.projects=DB.projects.filter(p=>p.id!==id);
   if(activeId===id){
     activeId=null;
-    document.getElementById('welcome').style.display='';
-    document.getElementById('tabs-bar').style.display='none';
+    showWelcome(true);
   }
   saveDB();
   renderSidebar();
