@@ -1309,7 +1309,6 @@ function renderArchiv(container) {
     if(btn.dataset.gaeb)  { activeId=btn.dataset.gaeb; exportGAEB(); }
     if(btn.dataset.del)   { deleteProjectPermanent(btn.dataset.del); }
   });
-}dChild(el);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1521,8 +1520,7 @@ function parseGAEB(xmlStr, filename) {
     if(detailEl.length) {
       // Kurztitel aus erstem Satz, dann Rest
       const textEls = getEls(detailEl[0], 'Text');
-      desc = textEls.map(t=>(t.textContent||'').trim()).filter(Boolean).join('
-');
+      desc = textEls.map(t=>(t.textContent||'').trim()).filter(Boolean).join('\n');
     }
     if(!desc && shortEl.length) desc = (shortEl[0].textContent||'').trim();
     if(!desc && longEl.length) desc = (longEl[0].textContent||'').trim();
