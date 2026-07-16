@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LV-Manager v2 | Riedel Bau AG</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#1e3a5f">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -243,6 +244,50 @@ button:active{transform:scale(.98)}
 .prompt-actions{display:flex;gap:8px}
 /* ── ARCHIVE BADGE ── */
 .arch-ribbon{display:inline-block;background:#9ca3af;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px}
+
+/* ── LANGTEXT / KOPIEREN ── */
+.desc-cell{display:flex;flex-direction:column;gap:3px;padding-right:6px}
+.desc-ta{width:100%;min-height:72px;resize:vertical;line-height:1.45;font-size:11px}
+.desc-tools{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.mini-btn{padding:2px 7px;font-size:9px;border-radius:3px;font-weight:700;background:#eef2f7;color:#374151;border:none;cursor:pointer}
+.mini-btn:hover{background:#dbe3ed}
+.mini-btn.k{background:#e0e7ff;color:#3730a3}
+.mini-btn.l{background:#dcfce7;color:#15803d}
+.mini-btn.x{background:#fef3c7;color:#92400e}
+.desc-meta{font-size:9px;color:#9ca3af;margin-left:auto;font-family:'IBM Plex Mono',monospace}
+
+/* ── TEXT-EDITOR MODAL ── */
+.ted{background:#fff;border-radius:10px;width:820px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);overflow:hidden}
+.ted-hdr{background:var(--dark);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:10px}
+.ted-hdr h3{font-size:14px;font-weight:700;flex:1;color:#fff}
+.ted-body{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.ted-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;display:flex;align-items:center;gap:8px}
+.ted-inp{width:100%;border:1.5px solid var(--border);border-radius:6px;padding:9px 11px;font-size:13px;font-family:inherit}
+.ted-inp:focus{outline:none;border-color:var(--mid);background:#eff6ff}
+.ted-ta{width:100%;border:1.5px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;font-family:inherit;line-height:1.65;resize:vertical;min-height:300px}
+.ted-ta:focus{outline:none;border-color:var(--mid);background:#eff6ff}
+.ted-ftr{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#f9fafb;gap:8px}
+
+/* ── VORBEMERKUNGEN ── */
+.vb-block{border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:#fff;overflow:hidden}
+.vb-hdr{background:#f9fafb;padding:7px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.vb-num{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);font-weight:700;min-width:20px}
+.vb-title{flex:1;border:none;background:transparent;font-size:12px;font-weight:700;color:var(--dark);outline:none;font-family:inherit}
+.vb-title:focus{background:#eff6ff;border-radius:4px;padding:2px 4px}
+.vb-ta{width:100%;border:none;padding:10px 12px;font-size:11.5px;font-family:inherit;line-height:1.7;resize:vertical;min-height:90px;outline:none}
+.vb-ta:focus{background:#fffdf5}
+
+/* ── SYNC ── */
+.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.sync-dot.on{background:#4ade80}
+.sync-dot.off{background:#6b7280}
+.sync-dot.err{background:#f87171}
+.sync-dot.busy{background:#fbbf24}
+.sync-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.sync-row label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.sync-row input{border:1.5px solid var(--border);border-radius:5px;padding:7px 9px;font-size:12px;font-family:'IBM Plex Mono',monospace}
+.sync-row input:focus{outline:none;border-color:var(--mid)}
+.sql-box{background:#1e2d3d;border-radius:7px;padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#7ec8e3;line-height:1.55;white-space:pre;overflow-x:auto;max-height:200px;overflow-y:auto}
 </style>
 </head>
 <body>
@@ -258,6 +303,10 @@ button:active{transform:scale(.98)}
     <button class="tb-btn" style="background:#2563eb;color:#fff;font-size:11px;padding:5px 12px" onclick="showGAEBImport()">⬆ GAEB Import</button>
     <button class="tb-btn ghost" onclick="exportAllJSON()">⬇ Backup</button>
     <div class="tb-spacer"></div>
+    <button class="tb-btn ghost" id="sync-btn" onclick="openSyncDialog()" title="Geräte-Sync"
+      style="display:flex;align-items:center;gap:6px">
+      <span class="sync-dot off" id="sync-dot"></span><span id="sync-label">Sync aus</span>
+    </button>
     <span class="tb-status" id="tb-status"></span>
     <button id="pwa-install-btn" class="tb-btn" onclick="installPWA()"
       style="background:#7c3aed;color:#fff;display:none;font-size:11px;padding:5px 12px">
@@ -294,6 +343,7 @@ button:active{transform:scale(.98)}
   <div class="tabs-bar" id="tabs-bar" style="display:none">
     <button class="tab active" data-tab="lv" onclick="switchTab('lv')">📋 LV</button>
     <button class="tab" data-tab="stamm" onclick="switchTab('stamm')">📁 Stammdaten</button>
+    <button class="tab" data-tab="vorbem" onclick="switchTab('vorbem')">📝 Vorbemerkungen</button>
     <button class="tab" data-tab="analyse" onclick="switchTab('analyse')">🔍 VOB-Analyse</button>
     <button class="tab" data-tab="claude" onclick="switchTab('claude')">🤖 Claude-Check</button>
     <button class="tab" data-tab="archiv" onclick="switchTab('archiv')">🗄 Archiv</button>
@@ -365,7 +415,7 @@ function loadDB() {
 }
 function saveDB() {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(()=>{ try{ localStorage.setItem(SK, JSON.stringify(DB)); setStatus('💾 Gespeichert'); } catch(e){} }, 400);
+  debounceTimer = setTimeout(()=>{ try{ localStorage.setItem(SK, JSON.stringify(DB)); setStatus('💾 Gespeichert'); } catch(e){} if(typeof schedulePush==='function') schedulePush(); }, 400);
 }
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function setStatus(s) { const el=document.getElementById('tb-status'); if(el) el.textContent=s; }
@@ -577,6 +627,7 @@ function archiveProject() {
 function deleteProjectPermanent(id) {
   if(!confirm('LV unwiderruflich löschen?')) return;
   DB.projects=DB.projects.filter(p=>p.id!==id);
+  if(typeof tombstones==='function') tombstones()[id]=Date.now();  // Löschung auf andere Geräte übertragen
   if(activeId===id){
     activeId=null;
     showWelcome(true);
@@ -674,6 +725,7 @@ function switchTab(tab) {
   const body=document.getElementById('tab-body');
   if(tab==='lv')      { body.innerHTML=''; renderLV(body); }
   if(tab==='stamm')   { body.innerHTML=''; renderStamm(body); }
+  if(tab==='vorbem')  { body.innerHTML=''; renderVorbem(body); }
   if(tab==='analyse') { body.innerHTML=''; renderAnalyse(body); }
   if(tab==='claude')  { body.innerHTML=''; renderClaude(body); }
   if(tab==='archiv')  { body.innerHTML=''; renderArchiv(body); }
@@ -713,9 +765,15 @@ function renderLV(container) {
           </select></div>
           <div><input value="${esc(pos.oz)}" data-field="oz" placeholder="01.01"
             style="font-family:'IBM Plex Mono',monospace;font-size:10px"></div>
-          <div>
-            <textarea rows="2" data-field="desc" placeholder="Leistungsbeschreibung…">${esc(pos.desc)}</textarea>
-            ${pos.added?'<span class="added-tag">🔵 ERGÄNZT</span>':''}
+          <div class="desc-cell">
+            <textarea class="desc-ta" rows="4" data-field="desc" placeholder="Kurztext (1. Zeile)&#10;Langtext ab Zeile 2…">${esc(pos.desc)}</textarea>
+            <div class="desc-tools">
+              <button class="mini-btn k" data-copyk="${pos.id}" title="Kurztext (1. Zeile) kopieren">📋 Kurztext</button>
+              <button class="mini-btn l" data-copyl="${pos.id}" title="Langtext (ab Zeile 2) kopieren">📋 Langtext</button>
+              <button class="mini-btn x" data-expand="${pos.id}" title="Im großen Editor öffnen">⤢ Editor</button>
+              ${pos.added?'<span class="added-tag">🔵 ERGÄNZT</span>':''}
+              <span class="desc-meta" data-meta="${pos.id}">${descMeta(pos)}</span>
+            </div>
           </div>
           <div><select data-field="unit">${UNITS.map(u=>`<option${pos.unit===u?' selected':''} value="${u}">${u}</option>`).join('')}</select></div>
           <div><input type="number" value="${esc(String(pos.menge))}" data-field="menge" placeholder="—"
@@ -763,6 +821,11 @@ function renderLV(container) {
         const sec=p.sections.find(s=>s.id===sid); if(!sec) return;
         const pos=sec.positions.find(pos=>pos.id===pid); if(!pos) return;
         pos[t.dataset.field]=t.value;
+        // Zeichenzähler Kurz/Lang aktualisieren
+        if(t.dataset.field==='desc'){
+          const mEl=el.querySelector(`[data-meta="${pid}"]`);
+          if(mEl) mEl.textContent=descMeta(pos);
+        }
         // Live GP update
         const gp=calcGP(pos);
         const gpEl=el.querySelector(`[data-gp="${pid}"]`);
@@ -778,6 +841,12 @@ function renderLV(container) {
 
   el.addEventListener('click', e=>{
     const t=e.target;
+    // Kurz-/Langtext kopieren
+    if(t.dataset.copyk){ const h=findPos(t.dataset.copyk);
+      if(h){ const s=kurzText(h.pos); s?copyToClipboard(s,'Kurztext'):toast('Kein Kurztext vorhanden','warn'); } return; }
+    if(t.dataset.copyl){ const h=findPos(t.dataset.copyl);
+      if(h){ const s=langText(h.pos); s?copyToClipboard(s,'Langtext'):toast('Kein Langtext vorhanden – nur Zeile 1 belegt','warn'); } return; }
+    if(t.dataset.expand){ openTextEditor(t.dataset.expand); return; }
     // Add position
     if(t.dataset.addpos){ addPos(t.dataset.addpos); return; }
     // Dup position
@@ -787,6 +856,83 @@ function renderLV(container) {
     // Add section
     if(t.id==='add-sec-btn'){ addSection(); return; }
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// KURZ- / LANGTEXT
+// Konvention: Zeile 1 = Kurztext (GAEB OutlineText), ab Zeile 2 = Langtext
+// ════════════════════════════════════════════════════════════════════════
+function kurzText(pos){ return String(pos.desc||'').split('\n')[0].trim(); }
+function langText(pos){ return String(pos.desc||'').split('\n').slice(1).join('\n').trim(); }
+function joinText(kurz,lang){ return lang.trim() ? kurz.trim()+'\n'+lang.trim() : kurz.trim(); }
+function descMeta(pos){
+  const k=kurzText(pos).length, l=langText(pos).length;
+  return `K:${k}${k>60?'⚠':''} · L:${l}`;
+}
+function findPos(pid){
+  const p=getActive(); if(!p) return null;
+  for(const sec of p.sections){
+    const pos=sec.positions.find(x=>x.id===pid);
+    if(pos) return {sec,pos};
+  }
+  return null;
+}
+
+function openTextEditor(pid){
+  const hit=findPos(pid); if(!hit){ toast('Position nicht gefunden','err'); return; }
+  const {sec,pos}=hit;
+  const bg=document.createElement('div');
+  bg.className='modal-bg';
+  bg.innerHTML=`<div class="ted">
+    <div class="ted-hdr">
+      <span style="font-size:18px">📝</span>
+      <h3>Position ${esc(pos.oz)||'(ohne OZ)'} · ${esc(sec.title)}</h3>
+      <button onclick="this.closest('.modal-bg').remove()"
+        style="background:rgba(255,255,255,.14);color:#fff;padding:4px 10px;font-size:13px;border-radius:4px">✕</button>
+    </div>
+    <div class="ted-body">
+      <div>
+        <div class="ted-lbl">Kurztext <span id="ted-kcount" style="font-weight:400;text-transform:none;letter-spacing:0"></span>
+          <button class="mini-btn k" id="ted-copyk" style="margin-left:auto">📋 kopieren</button>
+        </div>
+        <input class="ted-inp" id="ted-kurz" value="${esc(kurzText(pos))}" placeholder="z.B. Leitungsgraben ausheben">
+      </div>
+      <div>
+        <div class="ted-lbl">Langtext
+          <button class="mini-btn l" id="ted-copyl" style="margin-left:auto">📋 kopieren</button>
+          <button class="mini-btn" id="ted-copyall">📋 Kurz + Lang</button>
+        </div>
+        <textarea class="ted-ta" id="ted-lang" placeholder="Detaillierte Leistungsbeschreibung nach VOB/C…">${esc(langText(pos))}</textarea>
+      </div>
+    </div>
+    <div class="ted-ftr">
+      <span style="font-size:10px;color:var(--muted)">Zeile 1 = Kurztext · Rest = Langtext · Strg+Enter speichert</span>
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.modal-bg').remove()"
+          style="background:#eef2f7;color:var(--muted);padding:8px 14px;font-size:12px">Abbrechen</button>
+        <button id="ted-save" style="background:var(--green);color:#fff;padding:8px 18px;font-size:12px">✓ Übernehmen</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  const kEl=bg.querySelector('#ted-kurz'), lEl=bg.querySelector('#ted-lang');
+  const cnt=()=>{ const n=kEl.value.trim().length;
+    bg.querySelector('#ted-kcount').innerHTML=`<span style="color:${n>60?'#d97706':'#9ca3af'}">${n}/60 Zeichen${n>60?' – für GAEB-Kurztext zu lang':''}</span>`; };
+  cnt(); kEl.addEventListener('input',cnt);
+  bg.querySelector('#ted-copyk').onclick=()=>copyToClipboard(kEl.value.trim(),'Kurztext');
+  bg.querySelector('#ted-copyl').onclick=()=>copyToClipboard(lEl.value.trim(),'Langtext');
+  bg.querySelector('#ted-copyall').onclick=()=>copyToClipboard(joinText(kEl.value,lEl.value),'Kurz- + Langtext');
+  const save=()=>{
+    updateProject(p=>{
+      const s=p.sections.find(s=>s.id===sec.id); if(!s) return;
+      const po=s.positions.find(x=>x.id===pid); if(po) po.desc=joinText(kEl.value,lEl.value);
+    });
+    bg.remove(); switchTab('lv'); toast('Text übernommen');
+  };
+  bg.querySelector('#ted-save').onclick=save;
+  bg.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) save(); if(e.key==='Escape') bg.remove(); });
+  bg.addEventListener('click',e=>{ if(e.target===bg) bg.remove(); });
+  setTimeout(()=>kEl.focus(),0);
 }
 
 function toggleCollapse(sid){collapsed[sid]=!collapsed[sid];switchTab('lv');}
@@ -1290,6 +1436,252 @@ function buildLVContext(p){
 // ════════════════════════════════════════════════════════════════════════
 // ARCHIV TAB
 // ════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
+// VORBEMERKUNGEN
+// ════════════════════════════════════════════════════════════════════════
+function vorbemTemplate(p){
+  const d=x=>x&&String(x).trim()?String(x).trim():'[noch offen]';
+  const normen=(getNormenArray(p).length?getNormenArray(p).join(', '):d(p.norm));
+  return [
+    {title:'1. Allgemeine Angaben zum Bauvorhaben', text:
+`Bauvorhaben:        ${d(p.name)}
+Bauort:             ${d(p.ort)}
+Auftraggeber:       ${d(p.ag)}
+Bauleitung AG:      ${d(p.bl)}
+LV-Nummer / VE:     ${d(p.lvnr)}
+Gewerk:             ${d(p.gewerk)}
+
+Die nachstehenden Vorbemerkungen sind Bestandteil des Leistungsverzeichnisses und
+gelten für sämtliche Positionen dieses Gewerks. Sie sind bei der Preisbildung zu
+berücksichtigen. Die in den Vorbemerkungen beschriebenen Leistungen werden nicht
+gesondert vergütet, soweit sie nicht ausdrücklich als eigene Position ausgewiesen sind.`},
+
+    {title:'2. Vertragsgrundlagen', text:
+`Es gelten in nachstehender Reihenfolge:
+1. Das Verhandlungsprotokoll / der Bauvertrag
+2. Dieses Leistungsverzeichnis einschließlich dieser Vorbemerkungen
+3. Die VOB Teil B (Allgemeine Vertragsbedingungen) in der bei Vertragsschluss geltenden Fassung
+4. Die VOB Teil C (Allgemeine Technische Vertragsbedingungen), insbesondere
+   ATV DIN 18299 sowie ${normen}
+5. Die anerkannten Regeln der Technik sowie die einschlägigen DIN-, EN- und DIN-EN-Normen
+   in der bei Angebotsabgabe geltenden Fassung
+6. Die berufsgenossenschaftlichen Vorschriften und die Baustellenverordnung (BaustellV)
+
+Vergabeart:   ${d(p.vergabeart)}
+Vertragsform: Einheitspreisvertrag, soweit im Verhandlungsprotokoll nicht abweichend geregelt.`},
+
+    {title:'3. Ausführungszeitraum und Termine', text:
+`Ausführungszeitraum: ${d(p.ausfzeit)}
+
+Die Einzeltermine werden im Rahmen der Bauablaufplanung durch die Bauleitung des AG
+festgelegt. Der AN hat sich in den Gesamtbauablauf einzufügen und seine Leistungen mit
+den übrigen am Bau Beteiligten zu koordinieren.
+
+Behinderungen sind dem AG unverzüglich schriftlich nach VOB/B § 6 Abs. 1 anzuzeigen.
+Eine mündliche Anzeige genügt nicht. Verspätet angezeigte Behinderungen begründen
+keinen Anspruch auf Bauzeitverlängerung.`},
+
+    {title:'4. Baustellenverhältnisse und Leistungsgrenze', text:
+`Leistungsgrenze / Schnittstellen: ${d(p.leistgrenze)}
+
+Der AN hat sich vor Angebotsabgabe durch eine Ortsbesichtigung über die örtlichen
+Verhältnisse, die Zufahrtsmöglichkeiten, die Lagerflächen sowie den Zustand des
+Baugeländes zu unterrichten (VOB/B § 3, VOB/C ATV DIN 18299 Abschn. 0.1.2).
+Spätere Mehrforderungen aus mangelnder Kenntnis der Baustellenverhältnisse werden
+nicht anerkannt.
+
+Strom- und Wasserentnahmestellen werden vom AG bereitgestellt; der Verbrauch wird dem
+AN nach den Regelungen des Verhandlungsprotokolls angerechnet. Die Feinverteilung ab
+den Übergabepunkten ist Nebenleistung des AN.`},
+
+    {title:'5. Nebenleistungen und Besondere Leistungen', text:
+`Nebenleistungen nach VOB/C ATV DIN 18299 Abschn. 4.1 sowie nach den Abschnitten 4.1
+der jeweils einschlägigen ATV gehören auch dann zur vertraglichen Leistung, wenn sie
+im Leistungsverzeichnis nicht gesondert erwähnt sind, und werden nicht gesondert
+vergütet.
+
+Besondere Leistungen nach Abschn. 4.2 der jeweiligen ATV sind nur dann Vertrags-
+bestandteil, wenn sie im Leistungsverzeichnis als eigene Position ausgewiesen oder in
+diesen Vorbemerkungen ausdrücklich gefordert sind.
+
+Erkennt der AN Widersprüche, Lücken oder Unklarheiten im Leistungsverzeichnis, hat er
+diese vor Angebotsabgabe schriftlich beim AG anzuzeigen (VOB/B § 4 Abs. 3).`},
+
+    {title:'6. Aufmaß und Abrechnung', text:
+`Die Abrechnung erfolgt nach den Abrechnungsregeln des Abschnitts 5 der jeweils
+einschlägigen ATV der VOB/C.
+
+Das Aufmaß ist gemeinsam mit der Bauleitung des AG zu nehmen (VOB/B § 14 Abs. 2).
+Einseitig erstellte Aufmaße werden nicht anerkannt. Leistungen, die durch den weiteren
+Baufortschritt der Prüfung entzogen werden, sind rechtzeitig vor dem Verdecken
+gemeinsam aufzumessen und zu dokumentieren.
+
+Rechnungen sind prüfbar und nach Positionen des LV gegliedert einzureichen
+(VOB/B § 14 Abs. 1).`},
+
+    {title:'7. Sicherheit und Gesundheitsschutz', text:
+`Der AN hat die Baustellenverordnung (BaustellV), die DGUV-Vorschriften sowie den
+Sicherheits- und Gesundheitsschutzplan (SiGe-Plan) des AG zu beachten und den
+Anweisungen des SiGeKo Folge zu leisten.
+
+Der AN stellt die erforderlichen persönlichen Schutzausrüstungen, Absturzsicherungen
+und Absperrungen für seinen Leistungsbereich auf eigene Kosten. Diese Leistungen sind
+Nebenleistung und werden nicht gesondert vergütet.
+
+Der AN benennt vor Arbeitsbeginn einen verantwortlichen, deutschsprachigen
+Aufsichtführenden für die Baustelle.`},
+
+    {title:'8. Gewährleistung und Abnahme', text:
+`Die Abnahme erfolgt förmlich nach VOB/B § 12 Abs. 4.
+
+Die Verjährungsfrist für Mängelansprüche beträgt 4 Jahre ab Abnahme, soweit im
+Verhandlungsprotokoll nicht abweichend vereinbart (VOB/B § 13 Abs. 4).
+
+Der AN übergibt spätestens zur Abnahme sämtliche Bestandsunterlagen, Prüfprotokolle,
+Nachweise der verwendeten Baustoffe sowie ggf. Revisionspläne in digitaler Form.
+Ohne diese Unterlagen ist die Abnahme nicht fällig.`},
+
+    {title:'9. Hinweise zur Angebotsabgabe', text:
+`Sämtliche Positionen sind auszupreisen. Nicht ausgepreiste Positionen gelten als in
+anderen Positionen einkalkuliert.
+
+Änderungen am Wortlaut des Leistungsverzeichnisses sind unzulässig und führen zum
+Ausschluss des Angebots.
+
+Nebenangebote sind nur zulässig, wenn sie im Verhandlungsprotokoll ausdrücklich
+zugelassen wurden, und sind auf gesondertem Blatt vollständig zu beschreiben.
+
+Eventualpositionen werden nur nach gesonderter schriftlicher Beauftragung ausgeführt.
+Ein Anspruch auf Beauftragung besteht nicht.`},
+  ].map(b=>({id:uid(), title:b.title, text:b.text}));
+}
+
+function getVorbem(p){
+  if(!Array.isArray(p.vorbem)) p.vorbem=[];
+  return p.vorbem;
+}
+function vorbemToText(p){
+  const blocks=getVorbem(p);
+  if(!blocks.length) return '';
+  return `VORBEMERKUNGEN\n${p.name||''}${p.ort?' · '+p.ort:''}${p.lvnr?' · LV-Nr. '+p.lvnr:''}\n`
+    + '='.repeat(78) + '\n\n'
+    + blocks.map(b=>`${b.title}\n${'-'.repeat(78)}\n${b.text}`).join('\n\n\n')
+    + `\n\n${'='.repeat(78)}\nStand: ${new Date().toLocaleDateString('de-DE')} · Riedel Bau AG · LV-Manager v2\n`;
+}
+
+function renderVorbem(container){
+  const p=getActive(); if(!p) return;
+  const blocks=getVorbem(p);
+  const el=document.createElement('div');
+  el.style.cssText='max-width:900px';
+
+  let html=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+    <h2 style="font-size:16px;font-weight:700;color:var(--dark);flex:1">📝 Vorbemerkungen</h2>
+    <button id="vb-gen" style="background:${blocks.length?'#eef2f7':'var(--dark)'};color:${blocks.length?'var(--dark)':'#fff'};padding:7px 14px;font-size:11px;border-radius:5px">
+      ${blocks.length?'↻ Aus Stammdaten neu erzeugen':'✨ Aus Stammdaten erzeugen'}
+    </button>
+    <button id="vb-add" style="background:#eef2f7;color:var(--dark);padding:7px 14px;font-size:11px;border-radius:5px">+ Block</button>
+    <button id="vb-prompt" style="background:#7c3aed;color:#fff;padding:7px 14px;font-size:11px;border-radius:5px">🤖 Claude-Prompt</button>
+    <button id="vb-copy" style="background:var(--green);color:#fff;padding:7px 16px;font-size:11px;border-radius:5px">📋 Alles kopieren</button>
+  </div>`;
+
+  if(!blocks.length){
+    html+=`<div style="text-align:center;padding:40px 24px;background:#fff;border:2px dashed var(--border);border-radius:10px">
+      <div style="font-size:38px;margin-bottom:10px">📝</div>
+      <div style="font-size:14px;font-weight:700;color:var(--dark);margin-bottom:6px">Noch keine Vorbemerkungen</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;max-width:460px;margin:0 auto">
+        „Aus Stammdaten erzeugen" legt neun Standardblöcke an (Vertragsgrundlagen, Termine,
+        Nebenleistungen, Aufmaß, Gewährleistung …) und füllt sie mit den Daten dieses LV.
+        Danach frei bearbeitbar.
+      </div>
+    </div>`;
+  } else {
+    html+=`<div style="background:var(--abg);border:1px solid #93c5fd;border-radius:7px;padding:9px 13px;font-size:11px;color:#1a5f8a;margin-bottom:12px;line-height:1.6">
+      Änderungen werden sofort gespeichert. <strong>📋 Alles kopieren</strong> liefert reinen Text —
+      direkt einfügbar in iTWO, Word oder die Ausschreibungsunterlagen.
+      Platzhalter <strong>[noch offen]</strong> markieren fehlende Stammdaten.
+    </div>`;
+    blocks.forEach((b,i)=>{
+      html+=`<div class="vb-block" data-vb="${b.id}">
+        <div class="vb-hdr">
+          <span class="vb-num">${String(i+1).padStart(2,'0')}</span>
+          <input class="vb-title" value="${esc(b.title)}" data-vbtitle="${b.id}" placeholder="Überschrift…">
+          <button class="mini-btn" data-vbcopy="${b.id}" title="Diesen Block kopieren">📋</button>
+          <button class="mini-btn" data-vbup="${b.id}" title="Nach oben"${i===0?' disabled style="opacity:.3"':''}>▲</button>
+          <button class="mini-btn" data-vbdown="${b.id}" title="Nach unten"${i===blocks.length-1?' disabled style="opacity:.3"':''}>▼</button>
+          <button class="mini-btn" style="background:var(--rbg);color:#dc2626" data-vbdel="${b.id}" title="Löschen">✕</button>
+        </div>
+        <textarea class="vb-ta" data-vbtext="${b.id}" rows="${Math.min(22,Math.max(4,(b.text||'').split('\n').length+1))}">${esc(b.text)}</textarea>
+      </div>`;
+    });
+    const chars=vorbemToText(p).length;
+    html+=`<div style="padding:10px 12px;background:#f9fafb;border-radius:7px;font-size:11px;color:var(--muted);margin-top:4px">
+      ${blocks.length} Blöcke · ${chars.toLocaleString('de-DE')} Zeichen gesamt
+    </div>`;
+  }
+
+  el.innerHTML=html;
+  container.appendChild(el);
+
+  el.querySelector('#vb-gen').onclick=()=>{
+    if(blocks.length && !confirm('Vorbemerkungen neu erzeugen? Alle eigenen Änderungen gehen verloren.')) return;
+    updateProject(p=>{ p.vorbem=vorbemTemplate(p); });
+    switchTab('vorbem'); toast('✓ Vorbemerkungen aus Stammdaten erzeugt');
+  };
+  el.querySelector('#vb-add').onclick=()=>{
+    updateProject(p=>{ getVorbem(p).push({id:uid(),title:'Neuer Block',text:''}); });
+    switchTab('vorbem');
+  };
+  el.querySelector('#vb-copy').onclick=()=>{
+    const t=vorbemToText(getActive());
+    t?copyToClipboard(t,'Vorbemerkungen'):toast('Noch keine Vorbemerkungen','warn');
+  };
+  el.querySelector('#vb-prompt').onclick=()=>{
+    const pp=getActive();
+    copyToClipboard(`Du bist VOB-Experte und Bauleiter bei Riedel Bau AG.
+
+Formuliere vollständige Vorbemerkungen für das folgende Leistungsverzeichnis.
+
+${buildLVContext(pp)}
+
+ANFORDERUNGEN:
+- Gliederung in nummerierte Blöcke mit Überschrift
+- Vertragsgrundlagen mit Rangfolge (VOB/B, VOB/C, ATV-Normen des Gewerks)
+- Abgrenzung Nebenleistungen (ATV Abschn. 4.1) / Besondere Leistungen (Abschn. 4.2)
+- Regelungen zu Aufmaß und Abrechnung (VOB/B § 14, ATV Abschn. 5)
+- Behinderungsanzeige nach VOB/B § 6, Abnahme nach § 12, Gewährleistung nach § 13
+- Baustellenverhältnisse, SiGe, Termine
+- Konkrete Paragraphen und ATV-Abschnitte zitieren, keine Floskeln
+- Sprache: sachlich, juristisch präzise, ausschreibungstauglich
+
+AUSGABE: reiner Text, keine Backticks, keine Markdown-Formatierung.
+Je Block: Überschrift in einer eigenen Zeile, darunter der Fließtext.`,'Vorbemerkungen-Prompt');
+  };
+
+  el.addEventListener('click',e=>{
+    const t=e.target;
+    if(t.dataset.vbcopy){ const b=getVorbem(getActive()).find(x=>x.id===t.dataset.vbcopy);
+      if(b) copyToClipboard(b.title+'\n'+'-'.repeat(78)+'\n'+b.text, b.title); return; }
+    if(t.dataset.vbdel){ if(!confirm('Block löschen?')) return;
+      updateProject(p=>{ p.vorbem=getVorbem(p).filter(x=>x.id!==t.dataset.vbdel); });
+      switchTab('vorbem'); return; }
+    if(t.dataset.vbup||t.dataset.vbdown){
+      const id=t.dataset.vbup||t.dataset.vbdown, dir=t.dataset.vbup?-1:1;
+      updateProject(p=>{ const a=getVorbem(p); const i=a.findIndex(x=>x.id===id);
+        if(i<0) return; const j=i+dir; if(j<0||j>=a.length) return;
+        [a[i],a[j]]=[a[j],a[i]]; });
+      switchTab('vorbem'); return; }
+  });
+
+  el.addEventListener('input',e=>{
+    const idT=e.target.dataset.vbtitle, idX=e.target.dataset.vbtext;
+    if(idT||idX) updateProject(p=>{
+      const b=getVorbem(p).find(x=>x.id===(idT||idX)); if(!b) return;
+      if(idT) b.title=e.target.value; else b.text=e.target.value;
+    });
+  });
+}
+
 function renderArchiv(container) {
   const all=DB.projects;
   let html=`<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
@@ -1385,6 +1777,15 @@ function exportExcel(){
   // Sheet 3: Stamm
   const sr=[['Feld','Wert'],...Object.entries({'LV-Bezeichnung':p.name,'Gewerk':p.gewerk,'Bauvorhaben':p.ort,'AG':p.ag,'AN':p.an||'','BL':p.bl,'LV-Nr':p.lvnr,'Datum':p.datum,'Ausführungszeitraum':p.ausfzeit||'','Leistungsgrenze':p.leistgrenze||'','Normen':p.norm||'','Vergabeart':p.vergabeart||'','Notizen':p.notes||''}).map(([k,v])=>[k,v||''])];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sr),'Stammdaten');
+  // Sheet 4: Vorbemerkungen
+  const vb=(p.vorbem||[]);
+  if(vb.length){
+    const vbr=[['Vorbemerkungen – '+(p.name||'')],[]];
+    vb.forEach(b=>{ vbr.push([b.title]); vbr.push([b.text]); vbr.push([]); });
+    const ws4=XLSX.utils.aoa_to_sheet(vbr);
+    ws4['!cols']=[{wch:110}];
+    XLSX.utils.book_append_sheet(wb,ws4,'Vorbemerkungen');
+  }
   const fname=(p.name||'LV').replace(/[^\w\-äöüÄÖÜß ]/g,'').trim();
   XLSX.writeFile(wb,fname+'.xlsx');
   toast('Excel exportiert ✓');
@@ -1677,6 +2078,9 @@ function normalizeLV(o, keepIds){
     normArr: Array.isArray(o.normArr)?o.normArr
            : (o.norm?String(o.norm).split(',').map(s=>s.trim()).filter(Boolean):[]),
     vergabeart:str(o.vergabeart), notes:str(o.notes),
+    vorbem: Array.isArray(o.vorbem)
+      ? o.vorbem.filter(v=>v&&(v.title||v.text)).map(v=>({id:uid(),title:str(v.title)||'Block',text:str(v.text)}))
+      : [],
     sections: secs.map(sec=>({
       id: (keepIds&&sec.id)?sec.id:uid(),
       title: str(sec&&sec.title)||'Abschnitt',
@@ -2330,6 +2734,235 @@ function createBlankFromWizard() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// GERÄTE-SYNC (Supabase + Auth + RLS)
+// Merge pro LV über updatedAt (Last-Write-Wins je Datensatz, nicht global)
+// ════════════════════════════════════════════════════════════════════════
+const SYNC_CFG_KEY='lv-sync-cfg';
+let sb=null, syncCfg=null, syncUser=null, syncTimer=null, syncPoll=null, syncing=false;
+
+const SYNC_SQL=`-- Einmalig im Supabase SQL Editor ausführen:
+create table if not exists lv_items (
+  user_id    uuid   not null default auth.uid() references auth.users on delete cascade,
+  id         text   not null,
+  kind       text   not null default 'lv',
+  data       jsonb  not null,
+  updated_at bigint not null,
+  deleted    boolean not null default false,
+  primary key (user_id, id)
+);
+
+alter table lv_items enable row level security;
+
+drop policy if exists "own rows" on lv_items;
+create policy "own rows" on lv_items
+  for all
+  using      (auth.uid() = user_id)
+  with check (auth.uid() = user_id);`;
+
+function loadSyncCfg(){
+  try{ syncCfg=JSON.parse(localStorage.getItem(SYNC_CFG_KEY)||'null'); }catch(e){ syncCfg=null; }
+  return syncCfg;
+}
+function saveSyncCfg(){ try{ localStorage.setItem(SYNC_CFG_KEY,JSON.stringify(syncCfg||{})); }catch(e){} }
+
+function setSyncState(state,label){
+  const dot=document.getElementById('sync-dot'), lbl=document.getElementById('sync-label');
+  if(dot) dot.className='sync-dot '+state;
+  if(lbl) lbl.textContent=label;
+}
+
+async function initSync(){
+  loadSyncCfg();
+  if(!syncCfg||!syncCfg.url||!syncCfg.key) { setSyncState('off','Sync aus'); return; }
+  if(!window.supabase){ setSyncState('err','Sync-Lib fehlt'); return; }
+  try{
+    sb=window.supabase.createClient(syncCfg.url,syncCfg.key);
+    const {data}=await sb.auth.getSession();
+    if(data&&data.session){ syncUser=data.session.user; onSyncReady(); }
+    else setSyncState('off','Nicht angemeldet');
+    sb.auth.onAuthStateChange((_e,s)=>{
+      syncUser=s?s.user:null;
+      if(syncUser) onSyncReady(); else { setSyncState('off','Nicht angemeldet'); stopPoll(); }
+    });
+  }catch(err){ console.error(err); setSyncState('err','Sync-Fehler'); }
+}
+
+function onSyncReady(){
+  setSyncState('on', syncUser.email ? syncUser.email.split('@')[0] : 'Sync an');
+  syncNow(true);
+  stopPoll();
+  syncPoll=setInterval(()=>syncNow(false),30000);
+  window.addEventListener('focus',onFocusSync);
+}
+function stopPoll(){ if(syncPoll){clearInterval(syncPoll);syncPoll=null;} window.removeEventListener('focus',onFocusSync); }
+function onFocusSync(){ syncNow(false); }
+
+function tombstones(){ if(!DB.tombstones) DB.tombstones={}; return DB.tombstones; }
+
+// Lokale Änderungen hochschieben (debounced) – von saveDB() aufgerufen
+function schedulePush(){
+  if(!sb||!syncUser) return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>syncNow(false),2500);
+}
+
+async function syncNow(initial){
+  if(!sb||!syncUser||syncing) return;
+  syncing=true;
+  const prevLabel=document.getElementById('sync-label')?.textContent;
+  setSyncState('busy','Sync…');
+  try{
+    // 1. PULL
+    const {data:rows,error}=await sb.from('lv_items').select('id,kind,data,updated_at,deleted');
+    if(error) throw error;
+    let changed=false;
+    const remoteIds=new Set();
+    (rows||[]).forEach(r=>{
+      remoteIds.add(r.id);
+      if(r.kind==='projekt'){
+        if(!DB.projekte) DB.projekte=[];
+        const i=DB.projekte.findIndex(x=>x.id===r.id);
+        if(r.deleted){ if(i>=0){ DB.projekte.splice(i,1); changed=true; } return; }
+        if(i<0){ DB.projekte.push(r.data); changed=true; }
+        return;
+      }
+      const i=DB.projects.findIndex(x=>x.id===r.id);
+      if(r.deleted){
+        if(i>=0){ DB.projects.splice(i,1); changed=true; }
+        tombstones()[r.id]=r.updated_at;
+        return;
+      }
+      if(i<0){ DB.projects.push(r.data); changed=true; }
+      else if(Number(r.updated_at) > Number(DB.projects[i].updatedAt||0)){ DB.projects[i]=r.data; changed=true; }
+    });
+
+    // 2. PUSH – alles was remote fehlt oder lokal neuer ist
+    const remoteMap={}; (rows||[]).forEach(r=>remoteMap[r.id]=Number(r.updated_at));
+    const up=[];
+    DB.projects.forEach(p=>{
+      const rt=remoteMap[p.id];
+      if(rt===undefined || Number(p.updatedAt||0) > rt)
+        up.push({id:p.id,kind:'lv',data:p,updated_at:Number(p.updatedAt||Date.now()),deleted:false});
+    });
+    (DB.projekte||[]).forEach(pr=>{
+      if(remoteMap[pr.id]===undefined)
+        up.push({id:pr.id,kind:'projekt',data:pr,updated_at:Number(pr.createdAt||Date.now()),deleted:false});
+    });
+    Object.entries(tombstones()).forEach(([id,ts])=>{
+      if(remoteMap[id]!==undefined && !(rows||[]).find(r=>r.id===id&&r.deleted))
+        up.push({id,kind:'lv',data:{},updated_at:Number(ts),deleted:true});
+    });
+    if(up.length){
+      const {error:e2}=await sb.from('lv_items').upsert(up.map(u=>({...u,user_id:syncUser.id})));
+      if(e2) throw e2;
+    }
+
+    if(changed){ try{ localStorage.setItem(SK,JSON.stringify(DB)); }catch(e){} renderSidebar();
+      if(activeId&&getActive()) switchTab(currentTab); }
+    syncCfg.lastSync=Date.now(); saveSyncCfg();
+    setSyncState('on', syncUser.email?syncUser.email.split('@')[0]:'Sync an');
+    if(initial) toast(`✓ Sync aktiv – ${DB.projects.length} LVs abgeglichen`);
+  }catch(err){
+    console.error('Sync:',err);
+    setSyncState('err','Sync-Fehler');
+    toast('Sync fehlgeschlagen: '+(err.message||err),'err');
+  }finally{ syncing=false; }
+}
+
+function openSyncDialog(){
+  loadSyncCfg();
+  const c=syncCfg||{};
+  const bg=document.createElement('div');
+  bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal" style="max-width:660px;max-height:92vh;overflow-y:auto">
+    <h3>🔄 Geräte-Sync einrichten</h3>
+    <p>LVs auf Handy, Tablet und Rechner gleichzeitig nutzen. Die Daten liegen in deinem
+    eigenen Supabase-Projekt und sind durch Login + Row Level Security geschützt —
+    der öffentliche Key allein gibt niemandem Zugriff.</p>
+
+    <div id="sync-status" style="padding:9px 12px;border-radius:6px;font-size:11px;margin-bottom:12px"></div>
+
+    <div class="sync-row"><label>1. Supabase Project URL</label>
+      <input id="sy-url" value="${esc(c.url||'')}" placeholder="https://xxxxxxxx.supabase.co"></div>
+    <div class="sync-row"><label>2. Publishable Key (oder Legacy Anon Key)</label>
+      <input id="sy-key" value="${esc(c.key||'')}" placeholder="sb_publishable_…  oder  eyJhbGciOi…"></div>
+    <div style="font-size:10px;color:var(--muted);margin:-6px 0 12px;line-height:1.6">
+      Supabase → Settings → API Keys. Neue Projekte haben nur den <strong>Publishable Key</strong>
+      (<code>sb_publishable_…</code>); ältere zeigen unter „Legacy API Keys" den <code>anon</code>-Key.
+      Beide funktionieren. Niemals den <strong>Secret</strong>-/<code>service_role</code>-Key eintragen —
+      der umgeht RLS und wäre im Quelltext dieser Seite öffentlich.
+    </div>
+
+    <details style="margin:10px 0 14px">
+      <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--dark)">3. Tabelle anlegen – SQL anzeigen</summary>
+      <div style="margin-top:8px">
+        <div class="sql-box" id="sy-sql">${esc(SYNC_SQL)}</div>
+        <button id="sy-copysql" style="background:#eef2f7;color:var(--dark);padding:6px 12px;font-size:11px;margin-top:6px;border-radius:5px">📋 SQL kopieren</button>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.6">
+          Supabase → SQL Editor → einfügen → Run. Danach unter Authentication → Providers
+          „Email" aktivieren (Confirm email kannst du für den Eigengebrauch ausschalten).
+        </div>
+      </div>
+    </details>
+
+    <div class="sync-row"><label>4. E-Mail</label>
+      <input id="sy-mail" type="email" value="${esc(c.mail||'')}" placeholder="simon@…"></div>
+    <div class="sync-row"><label>Passwort</label>
+      <input id="sy-pw" type="password" placeholder="mind. 6 Zeichen"></div>
+
+    <div class="modal-btns" style="flex-wrap:wrap">
+      <button id="sy-logout" style="background:#eef2f7;color:var(--muted);padding:8px 14px;font-size:12px">Abmelden</button>
+      <button id="sy-close" style="background:#eef2f7;color:var(--muted);padding:8px 14px;font-size:12px">Schließen</button>
+      <button id="sy-signup" style="background:#eef2f7;color:var(--dark);padding:8px 14px;font-size:12px">Konto anlegen</button>
+      <button id="sy-login" style="background:var(--dark);color:#fff;padding:8px 18px;font-size:12px">Anmelden & synchronisieren</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  const $=s=>bg.querySelector(s);
+  const stat=(msg,ok)=>{ const e=$('#sync-status');
+    e.style.background=ok===true?'var(--gbg)':ok===false?'var(--rbg)':'var(--wbg)';
+    e.style.color=ok===true?'#166534':ok===false?'#991b1b':'#92400e';
+    e.textContent=msg; };
+  stat(syncUser?`✓ Angemeldet als ${syncUser.email} – Sync läuft`:'Noch nicht angemeldet', syncUser?true:null);
+
+  const close=()=>bg.remove();
+  $('#sy-close').onclick=close;
+  bg.addEventListener('click',e=>{ if(e.target===bg) close(); });
+  $('#sy-copysql').onclick=()=>copyToClipboard(SYNC_SQL,'SQL');
+
+  const connect=async(mode)=>{
+    const url=$('#sy-url').value.trim().replace(/\/+$/,''), key=$('#sy-key').value.trim();
+    const mail=$('#sy-mail').value.trim(), pw=$('#sy-pw').value;
+    if(!url||!key){ stat('Bitte URL und Key eintragen',false); return; }
+    if(!/^https:\/\/[^\s\/]+\.[^\s\/]+$/.test(url)){ stat('URL sieht falsch aus – erwartet: https://xxxxxxxx.supabase.co',false); return; }
+    if(/^sb_secret_/.test(key)||/service_role/.test(key)){
+      stat('Das ist ein Secret-/service_role-Key! Der umgeht RLS und darf nie in den Browser. Bitte den Publishable- bzw. Anon-Key verwenden.',false); return; }
+    if(!mail||!pw){ stat('Bitte E-Mail und Passwort eintragen',false); return; }
+    if(!window.supabase){ stat('Supabase-Bibliothek nicht geladen – Internetverbindung prüfen',false); return; }
+    stat('Verbinde…',null);
+    try{
+      syncCfg={url,key,mail}; saveSyncCfg();
+      sb=window.supabase.createClient(url,key);
+      const fn = mode==='signup' ? sb.auth.signUp({email:mail,password:pw})
+                                 : sb.auth.signInWithPassword({email:mail,password:pw});
+      const {data,error}=await fn;
+      if(error) throw error;
+      if(!data.session){ stat('Konto angelegt – bitte E-Mail bestätigen, dann anmelden.',null); return; }
+      syncUser=data.session.user;
+      stat('✓ Angemeldet – synchronisiere…',true);
+      onSyncReady();
+      setTimeout(close,900);
+    }catch(err){ console.error(err); stat('Fehler: '+(err.message||err),false); setSyncState('err','Sync-Fehler'); }
+  };
+  $('#sy-login').onclick=()=>connect('login');
+  $('#sy-signup').onclick=()=>connect('signup');
+  $('#sy-logout').onclick=async()=>{
+    try{ if(sb) await sb.auth.signOut(); }catch(e){}
+    syncUser=null; stopPoll(); setSyncState('off','Sync aus'); stat('Abgemeldet – lokale Daten bleiben erhalten',null);
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // PWA INSTALL
 // ════════════════════════════════════════════════════════════════════════
 let deferredInstallPrompt = null;
@@ -2361,6 +2994,7 @@ function installPWA() {
 // ════════════════════════════════════════════════════════════════════════
 loadDB();
 renderSidebar();
+initSync();
 </script>
 </body>
 </html>
